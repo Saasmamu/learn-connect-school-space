@@ -48,22 +48,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setSession(session);
         
         if (session?.user) {
-          // Fetch user profile data
-          const { data: profile, error } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', session.user.id)
-            .single();
+          // Use setTimeout to defer the profile fetch and prevent recursion
+          setTimeout(async () => {
+            try {
+              const { data: profile, error } = await supabase
+                .from('profiles')
+                .select('*')
+                .eq('id', session.user.id)
+                .single();
 
-          if (profile && !error) {
-            setUser({
-              id: profile.id,
-              email: profile.email,
-              name: profile.full_name,
-              role: profile.role,
-              avatar: profile.avatar_url || undefined,
-            });
-          }
+              if (profile && !error) {
+                setUser({
+                  id: profile.id,
+                  email: profile.email,
+                  name: profile.full_name,
+                  role: profile.role,
+                  avatar: profile.avatar_url || undefined,
+                });
+              } else {
+                console.error('Profile fetch error:', error);
+                setUser(null);
+              }
+            } catch (error) {
+              console.error('Error fetching profile:', error);
+              setUser(null);
+            }
+          }, 0);
         } else {
           setUser(null);
         }
@@ -104,7 +114,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const redirectUrl = `${window.location.origin}/`;
       
-      const { error } = await supabase.auth.signUp({
+      const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
@@ -116,9 +126,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       });
       
-      if (error) throw error;
+      if (error) {
+        // Handle specific error cases
+        if (error.message.includes('User already registered')) {
+          throw new Error('This email is already registered. Please try logging in instead.');
+        }
+        throw error;
+      }
+
+      // Check if user needs email confirmation
+      if (data.user && !data.session) {
+        throw new Error('Please check your email to confirm your account before logging in.');
+      }
+      
     } catch (error) {
       console.error('Registration error:', error);
+      if (error instanceof Error) {
+        throw error;
+      }
       throw new Error('Registration failed');
     } finally {
       setLoading(false);
