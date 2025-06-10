@@ -1,21 +1,27 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { User, Session } from '@supabase/supabase-js';
+import { supabase } from '@/integrations/supabase/client';
+import { Database } from '@/integrations/supabase/types';
 
-export interface User {
+type UserRole = Database['public']['Enums']['user_role'];
+
+export interface AuthUser {
   id: string;
   email: string;
   name: string;
-  role: 'admin' | 'teacher' | 'student';
+  role: UserRole;
   avatar?: string;
   class?: string;
   subjects?: string[];
 }
 
 interface AuthContextType {
-  user: User | null;
+  user: AuthUser | null;
+  session: Session | null;
   login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string, name: string, role: string) => Promise<void>;
-  logout: () => void;
+  register: (email: string, password: string, name: string, role: UserRole) => Promise<void>;
+  logout: () => Promise<void>;
   loading: boolean;
 }
 
@@ -30,77 +36,104 @@ export const useAuth = () => {
 };
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Check for saved user in localStorage
-    const savedUser = localStorage.getItem('school_portal_user');
-    if (savedUser) {
-      setUser(JSON.parse(savedUser));
-    }
-    setLoading(false);
+    // Set up auth state listener
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        console.log('Auth state changed:', event, session);
+        setSession(session);
+        
+        if (session?.user) {
+          // Fetch user profile data
+          const { data: profile, error } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', session.user.id)
+            .single();
+
+          if (profile && !error) {
+            setUser({
+              id: profile.id,
+              email: profile.email,
+              name: profile.full_name,
+              role: profile.role,
+              avatar: profile.avatar_url || undefined,
+            });
+          }
+        } else {
+          setUser(null);
+        }
+        setLoading(false);
+      }
+    );
+
+    // Check for existing session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      if (!session) {
+        setLoading(false);
+      }
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
   const login = async (email: string, password: string) => {
     setLoading(true);
     try {
-      // Mock authentication - in real app, this would call your auth API
-      await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate API call
-      
-      // Determine role based on email for demo
-      let role: 'admin' | 'teacher' | 'student' = 'student';
-      if (email.includes('admin')) role = 'admin';
-      else if (email.includes('teacher')) role = 'teacher';
-      
-      const userData: User = {
-        id: Date.now().toString(),
+      const { error } = await supabase.auth.signInWithPassword({
         email,
-        name: email.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
-        role,
-        class: role === 'student' ? 'Class 10A' : undefined,
-        subjects: role === 'teacher' ? ['Mathematics', 'Physics'] : undefined,
-      };
+        password,
+      });
       
-      setUser(userData);
-      localStorage.setItem('school_portal_user', JSON.stringify(userData));
+      if (error) throw error;
     } catch (error) {
+      console.error('Login error:', error);
       throw new Error('Invalid credentials');
     } finally {
       setLoading(false);
     }
   };
 
-  const register = async (email: string, password: string, name: string, role: string) => {
+  const register = async (email: string, password: string, name: string, role: UserRole) => {
     setLoading(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate API call
+      const redirectUrl = `${window.location.origin}/`;
       
-      const userData: User = {
-        id: Date.now().toString(),
+      const { error } = await supabase.auth.signUp({
         email,
-        name,
-        role: role as 'admin' | 'teacher' | 'student',
-        class: role === 'student' ? 'Class 10A' : undefined,
-        subjects: role === 'teacher' ? ['Mathematics'] : undefined,
-      };
+        password,
+        options: {
+          emailRedirectTo: redirectUrl,
+          data: {
+            full_name: name,
+            role: role,
+          }
+        }
+      });
       
-      setUser(userData);
-      localStorage.setItem('school_portal_user', JSON.stringify(userData));
+      if (error) throw error;
     } catch (error) {
+      console.error('Registration error:', error);
       throw new Error('Registration failed');
     } finally {
       setLoading(false);
     }
   };
 
-  const logout = () => {
-    setUser(null);
-    localStorage.removeItem('school_portal_user');
+  const logout = async () => {
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      console.error('Logout error:', error);
+    }
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, register, logout, loading }}>
+    <AuthContext.Provider value={{ user, session, login, register, logout, loading }}>
       {children}
     </AuthContext.Provider>
   );
