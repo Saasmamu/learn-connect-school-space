@@ -60,37 +60,34 @@ export const StudentsPage: React.FC = () => {
     enabled: user?.role === 'admin',
   });
 
-  // Create user mutation
+  // Create user mutation - simplified to just create profile
   const createUserMutation = useMutation({
     mutationFn: async (userData: z.infer<typeof formSchema>) => {
-      const { data, error } = await supabase.auth.admin.createUser({
-        email: userData.email,
-        password: 'TempPassword123!', // Temporary password
-        user_metadata: {
+      // For now, we'll create a profile manually
+      // In a real app, you'd want to implement proper user invitation system
+      const tempUserId = crypto.randomUUID();
+      
+      const { data, error } = await supabase
+        .from('profiles')
+        .insert({
+          id: tempUserId,
+          email: userData.email,
           full_name: userData.full_name,
           role: userData.role,
-        }
-      });
-      
-      if (error) throw error;
-      
-      // Update profile with additional data
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .update({
-          phone: userData.phone,
-          address: userData.address,
+          phone: userData.phone || null,
+          address: userData.address || null,
         })
-        .eq('id', data.user.id);
+        .select()
+        .single();
         
-      if (profileError) throw profileError;
+      if (error) throw error;
       return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-users'] });
       toast({
         title: "Success",
-        description: "User created successfully",
+        description: "User profile created successfully. Note: This is a demo - in production, you'd send an invitation email.",
       });
       setIsDialogOpen(false);
       form.reset();
@@ -187,7 +184,7 @@ export const StudentsPage: React.FC = () => {
               <DialogHeader>
                 <DialogTitle>{editingUser ? 'Edit User' : 'Add New User'}</DialogTitle>
                 <DialogDescription>
-                  {editingUser ? 'Update user information' : 'Create a new user account'}
+                  {editingUser ? 'Update user information' : 'Create a new user profile (Demo mode - invitation system needed for production)'}
                 </DialogDescription>
               </DialogHeader>
               <Form {...form}>
