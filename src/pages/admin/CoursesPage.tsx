@@ -23,6 +23,8 @@ const formSchema = z.object({
   grade_level: z.string().min(1, 'Grade level is required'),
 });
 
+type FormData = z.infer<typeof formSchema>;
+
 export const CoursesPage: React.FC = () => {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -31,7 +33,7 @@ export const CoursesPage: React.FC = () => {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingClass, setEditingClass] = useState<any>(null);
 
-  const form = useForm<z.infer<typeof formSchema>>({
+  const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       name: '',
@@ -63,10 +65,17 @@ export const CoursesPage: React.FC = () => {
 
   // Create class mutation
   const createClassMutation = useMutation({
-    mutationFn: async (classData: z.infer<typeof formSchema>) => {
+    mutationFn: async (classData: FormData) => {
+      // Transform the form data to match Supabase requirements
+      const insertData = {
+        name: classData.name,
+        description: classData.description || null,
+        grade_level: classData.grade_level || null,
+      };
+      
       const { error } = await supabase
         .from('classes')
-        .insert(classData);
+        .insert(insertData);
         
       if (error) throw error;
     },
@@ -90,10 +99,17 @@ export const CoursesPage: React.FC = () => {
 
   // Update class mutation
   const updateClassMutation = useMutation({
-    mutationFn: async (classData: z.infer<typeof formSchema>) => {
+    mutationFn: async (classData: FormData) => {
+      // Transform the form data to match Supabase requirements
+      const updateData = {
+        name: classData.name,
+        description: classData.description || null,
+        grade_level: classData.grade_level || null,
+      };
+      
       const { error } = await supabase
         .from('classes')
-        .update(classData)
+        .update(updateData)
         .eq('id', editingClass.id);
         
       if (error) throw error;
@@ -117,7 +133,7 @@ export const CoursesPage: React.FC = () => {
     },
   });
 
-  const onSubmit = (values: z.infer<typeof formSchema>) => {
+  const onSubmit = (values: FormData) => {
     if (editingClass) {
       updateClassMutation.mutate(values);
     } else {
