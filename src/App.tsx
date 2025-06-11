@@ -1,4 +1,3 @@
-
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -18,7 +17,11 @@ import { TeachersPage } from "@/pages/admin/TeachersPage";
 import { CoursesPage as AdminCoursesPage } from "@/pages/admin/CoursesPage";
 import { PaymentsPage } from "@/pages/admin/PaymentsPage";
 import { AnalyticsPage } from "@/pages/admin/AnalyticsPage";
+import { LessonsPage } from "@/pages/LessonsPage";
+import { AssignmentsPage } from "@/pages/AssignmentsPage";
+import { GradebookPage } from "@/pages/GradebookPage";
 import NotFound from "./pages/NotFound";
+import AttendancePage from "./pages/AttendancePage";
 
 const queryClient = new QueryClient();
 
@@ -39,6 +42,12 @@ const App = () => (
               <Route path="/admissions" element={<AdmissionsPage />} />
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/courses" element={<CoursesPage />} />
+              
+              {/* LMS Routes */}
+              <Route path="/lessons" element={<LessonsPage />} />
+              <Route path="/assignments" element={<AssignmentsPage />} />
+              <Route path="/gradebook" element={<GradebookPage />} />
+              <Route path="/attendance" element={<AttendancePage />} />
               
               {/* Admin Routes */}
               <Route path="/admin/students" element={<StudentsPage />} />
