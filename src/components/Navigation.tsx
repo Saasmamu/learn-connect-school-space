@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -32,29 +31,35 @@ export const Navigation: React.FC = () => {
     const baseItems = [
       { name: 'Dashboard', href: '/dashboard' },
       { name: 'Courses', href: '/courses' },
+      { name: 'Lessons', href: '/lessons' },
     ];
 
     switch (user.role) {
       case 'admin':
         return [
           ...baseItems,
+          { name: 'Classes', href: '/admin/courses' },
           { name: 'Students', href: '/admin/students' },
           { name: 'Teachers', href: '/admin/teachers' },
+          { name: 'Assignments', href: '/assignments' },
+          { name: 'Gradebook', href: '/gradebook' },
+          { name: 'Attendance', href: '/attendance' },
+          { name: 'Payments', href: '/admin/payments' },
           { name: 'Analytics', href: '/admin/analytics' },
         ];
       case 'teacher':
         return [
           ...baseItems,
           { name: 'My Classes', href: '/teacher/classes' },
-          { name: 'Attendance', href: '/attendance' },
           { name: 'Assignments', href: '/assignments' },
+          { name: 'Gradebook', href: '/gradebook' },
+          { name: 'Attendance', href: '/attendance' },
         ];
       case 'student':
         return [
           ...baseItems,
-          { name: 'Lessons', href: '/lessons' },
           { name: 'Assignments', href: '/assignments' },
-          { name: 'Grades', href: '/grades' },
+          { name: 'Grades', href: '/gradebook' },
           { name: 'Payments', href: '/payments' },
         ];
       default:
