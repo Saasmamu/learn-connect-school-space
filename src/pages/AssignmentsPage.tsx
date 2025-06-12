@@ -17,6 +17,7 @@ import * as z from 'zod';
 import { FileText, Plus, Search, Edit, Calendar, Award, Users } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
+import { Link } from 'react-router-dom';
 
 const formSchema = z.object({
   title: z.string().min(2, 'Title must be at least 2 characters'),
@@ -54,30 +55,32 @@ export const AssignmentsPage: React.FC = () => {
   });
 
   // Fetch user's classes
-  const { data: userClasses } = useQuery({
+  const { data: userClasses, isLoading: classesLoading } = useQuery({
     queryKey: ['user-classes-assignments', user?.role],
     queryFn: async () => {
+      if (!user) return [];
+      
       if (user?.role === 'admin') {
         const { data, error } = await supabase
           .from('classes')
           .select('*')
           .order('name');
         if (error) throw error;
-        return data;
+        return data || [];
       } else if (user?.role === 'teacher') {
         const { data, error } = await supabase
           .from('teacher_classes')
           .select('classes(*)')
           .eq('teacher_id', user.id);
         if (error) throw error;
-        return data.map(tc => tc.classes).filter(Boolean);
+        return data.map(tc => tc.classes).filter(Boolean) || [];
       } else {
         const { data, error } = await supabase
           .from('student_classes')
           .select('classes(*)')
           .eq('student_id', user.id);
         if (error) throw error;
-        return data.map(sc => sc.classes).filter(Boolean);
+        return data.map(sc => sc.classes).filter(Boolean) || [];
       }
     },
     enabled: !!user,
@@ -201,6 +204,7 @@ export const AssignmentsPage: React.FC = () => {
   });
 
   const onSubmit = (values: FormData) => {
+    console.log('Form submission values:', values);
     saveAssignmentMutation.mutate(values);
   };
 
@@ -235,6 +239,16 @@ export const AssignmentsPage: React.FC = () => {
     }
   };
 
+  if (classesLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 p-4 md:p-6">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center py-8">Loading classes...</div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 p-4 md:p-6">
       <div className="max-w-7xl mx-auto space-y-6">
@@ -249,7 +263,21 @@ export const AssignmentsPage: React.FC = () => {
           {canManageAssignments && (
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
               <DialogTrigger asChild>
-                <Button onClick={() => { setEditingAssignment(null); form.reset(); }}>
+                <Button 
+                  onClick={() => { 
+                    setEditingAssignment(null); 
+                    form.reset({
+                      title: '',
+                      description: '',
+                      class_id: '',
+                      lesson_id: '',
+                      assignment_type: 'homework',
+                      max_points: 100,
+                      due_date: '',
+                    }); 
+                  }}
+                  disabled={!userClasses || userClasses.length === 0}
+                >
                   <Plus className="mr-2 h-4 w-4" />
                   Add Assignment
                 </Button>
@@ -261,63 +289,31 @@ export const AssignmentsPage: React.FC = () => {
                     {editingAssignment ? 'Update assignment information' : 'Create a new assignment for your class'}
                   </DialogDescription>
                 </DialogHeader>
-                <Form {...form}>
-                  <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                    <FormField
-                      control={form.control}
-                      name="class_id"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Class</FormLabel>
-                          <Select onValueChange={field.onChange} defaultValue={field.value}>
-                            <FormControl>
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select a class" />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              {userClasses?.map((cls) => (
-                                <SelectItem key={cls.id} value={cls.id}>
-                                  {cls.name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name="title"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Assignment Title</FormLabel>
-                          <FormControl>
-                            <Input {...field} placeholder="e.g., Algebra Problem Set 1" />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <div className="grid grid-cols-2 gap-4">
+                {(!userClasses || userClasses.length === 0) ? (
+                  <div className="p-4 text-center">
+                    <p className="text-gray-500">No classes available. Please contact an administrator to assign you to classes.</p>
+                  </div>
+                ) : (
+                  <Form {...form}>
+                    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
                       <FormField
                         control={form.control}
-                        name="assignment_type"
+                        name="class_id"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Type</FormLabel>
+                            <FormLabel>Class</FormLabel>
                             <Select onValueChange={field.onChange} defaultValue={field.value}>
                               <FormControl>
                                 <SelectTrigger>
-                                  <SelectValue />
+                                  <SelectValue placeholder="Select a class" />
                                 </SelectTrigger>
                               </FormControl>
                               <SelectContent>
-                                <SelectItem value="homework">Homework</SelectItem>
-                                <SelectItem value="quiz">Quiz</SelectItem>
-                                <SelectItem value="project">Project</SelectItem>
-                                <SelectItem value="exam">Exam</SelectItem>
+                                {userClasses?.map((cls) => (
+                                  <SelectItem key={cls.id} value={cls.id}>
+                                    {cls.name}
+                                  </SelectItem>
+                                ))}
                               </SelectContent>
                             </Select>
                             <FormMessage />
@@ -326,85 +322,139 @@ export const AssignmentsPage: React.FC = () => {
                       />
                       <FormField
                         control={form.control}
-                        name="max_points"
+                        name="title"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Max Points</FormLabel>
+                            <FormLabel>Assignment Title</FormLabel>
                             <FormControl>
-                              <Input 
-                                type="number" 
-                                {...field} 
-                                onChange={(e) => field.onChange(parseInt(e.target.value))}
-                                placeholder="100" 
-                              />
+                              <Input {...field} placeholder="e.g., Algebra Problem Set 1" />
                             </FormControl>
                             <FormMessage />
                           </FormItem>
                         )}
                       />
-                    </div>
-                    <FormField
-                      control={form.control}
-                      name="lesson_id"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Related Lesson (Optional)</FormLabel>
-                          <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <div className="grid grid-cols-2 gap-4">
+                        <FormField
+                          control={form.control}
+                          name="assignment_type"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Type</FormLabel>
+                              <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                <FormControl>
+                                  <SelectTrigger>
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                  <SelectItem value="homework">Homework</SelectItem>
+                                  <SelectItem value="quiz">Quiz</SelectItem>
+                                  <SelectItem value="project">Project</SelectItem>
+                                  <SelectItem value="exam">Exam</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={form.control}
+                          name="max_points"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Max Points</FormLabel>
+                              <FormControl>
+                                <Input 
+                                  type="number" 
+                                  {...field} 
+                                  onChange={(e) => field.onChange(parseInt(e.target.value))}
+                                  placeholder="100" 
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+                      <FormField
+                        control={form.control}
+                        name="lesson_id"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Related Lesson (Optional)</FormLabel>
+                            <Select onValueChange={field.onChange} defaultValue={field.value}>
+                              <FormControl>
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Select a lesson" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                <SelectItem value="">No specific lesson</SelectItem>
+                                {classLessons?.map((lesson) => (
+                                  <SelectItem key={lesson.id} value={lesson.id}>
+                                    {lesson.title}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="due_date"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Due Date (Optional)</FormLabel>
                             <FormControl>
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select a lesson" />
-                              </SelectTrigger>
+                              <Input type="datetime-local" {...field} />
                             </FormControl>
-                            <SelectContent>
-                              <SelectItem value="">No specific lesson</SelectItem>
-                              {classLessons?.map((lesson) => (
-                                <SelectItem key={lesson.id} value={lesson.id}>
-                                  {lesson.title}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name="due_date"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Due Date (Optional)</FormLabel>
-                          <FormControl>
-                            <Input type="datetime-local" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name="description"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Description</FormLabel>
-                          <FormControl>
-                            <Textarea {...field} rows={6} placeholder="Assignment instructions and requirements..." />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <DialogFooter>
-                      <Button type="submit" disabled={saveAssignmentMutation.isPending}>
-                        {editingAssignment ? 'Update' : 'Create'} Assignment
-                      </Button>
-                    </DialogFooter>
-                  </form>
-                </Form>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="description"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Description</FormLabel>
+                            <FormControl>
+                              <Textarea {...field} rows={6} placeholder="Assignment instructions and requirements..." />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <DialogFooter>
+                        <Button type="submit" disabled={saveAssignmentMutation.isPending}>
+                          {editingAssignment ? 'Update' : 'Create'} Assignment
+                        </Button>
+                      </DialogFooter>
+                    </form>
+                  </Form>
+                )}
               </DialogContent>
             </Dialog>
           )}
         </div>
+
+        {/* Show message if no classes for non-admin users */}
+        {canManageAssignments && (!userClasses || userClasses.length === 0) && (
+          <Card>
+            <CardContent className="p-6 text-center">
+              <p className="text-gray-500">
+                {user?.role === 'teacher' ? 'You are not assigned to any classes yet. Please contact an administrator.' : 'No classes created yet.'}
+              </p>
+              {user?.role === 'admin' && (
+                <Button asChild className="mt-4">
+                  <Link to="/admin/courses">Create Classes</Link>
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {/* Filters */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
