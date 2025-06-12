@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -242,13 +241,13 @@ export const TeacherDashboard: React.FC = () => {
               </CardHeader>
               <CardContent className="space-y-2">
                 <Button className="w-full justify-start" variant="outline" asChild>
-                  <Link to="/teacher/upload">
+                  <Link to="/lessons">
                     <Upload className="mr-2 h-4 w-4" />
                     Upload Lesson
                   </Link>
                 </Button>
                 <Button className="w-full justify-start" variant="outline" asChild>
-                  <Link to="/teacher/assignments">
+                  <Link to="/assignments">
                     <FileText className="mr-2 h-4 w-4" />
                     Create Assignment
                   </Link>

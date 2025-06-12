@@ -1,3 +1,4 @@
+
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -23,6 +24,8 @@ import { GradebookPage } from "@/pages/GradebookPage";
 import NotFound from "./pages/NotFound";
 import { AttendancePage } from "./pages/AttendancePage";
 import { TeacherClassesPage } from "./pages/teacher/TeacherClassesPage";
+import { TeacherGradebookPage } from "./pages/teacher/TeacherGradebookPage";
+import { MessagingPage } from "./pages/MessagingPage";
 
 const queryClient = new QueryClient();
 
@@ -49,7 +52,11 @@ const App = () => (
               <Route path="/assignments" element={<AssignmentsPage />} />
               <Route path="/gradebook" element={<GradebookPage />} />
               <Route path="/attendance" element={<AttendancePage />} />
-              <Route path="/payments" element={<PaymentsPage />} />
+              <Route path="/messaging" element={<MessagingPage />} />
+              
+              {/* Teacher Routes */}
+              <Route path="/teacher/classes" element={<TeacherClassesPage />} />
+              <Route path="/teacher/gradebook" element={<TeacherGradebookPage />} />
               
               {/* Admin Routes */}
               <Route path="/admin/students" element={<StudentsPage />} />
