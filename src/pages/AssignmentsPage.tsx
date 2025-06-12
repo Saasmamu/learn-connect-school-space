@@ -146,7 +146,7 @@ export const AssignmentsPage: React.FC = () => {
         title: assignmentData.title,
         description: assignmentData.description || null,
         class_id: assignmentData.class_id,
-        lesson_id: assignmentData.lesson_id || null,
+        lesson_id: assignmentData.lesson_id && assignmentData.lesson_id !== 'none' ? assignmentData.lesson_id : null,
         assignment_type: assignmentData.assignment_type,
         max_points: assignmentData.max_points,
         due_date: assignmentData.due_date ? new Date(assignmentData.due_date).toISOString() : null,
@@ -214,7 +214,7 @@ export const AssignmentsPage: React.FC = () => {
       title: assignment.title,
       description: assignment.description || '',
       class_id: assignment.class_id,
-      lesson_id: assignment.lesson_id || '',
+      lesson_id: assignment.lesson_id || 'none',
       assignment_type: assignment.assignment_type,
       max_points: assignment.max_points,
       due_date: assignment.due_date ? format(new Date(assignment.due_date), 'yyyy-MM-dd\'T\'HH:mm') : '',
@@ -270,7 +270,7 @@ export const AssignmentsPage: React.FC = () => {
                       title: '',
                       description: '',
                       class_id: '',
-                      lesson_id: '',
+                      lesson_id: 'none',
                       assignment_type: 'homework',
                       max_points: 100,
                       due_date: '',
@@ -389,7 +389,7 @@ export const AssignmentsPage: React.FC = () => {
                                 </SelectTrigger>
                               </FormControl>
                               <SelectContent>
-                                <SelectItem value="">No specific lesson</SelectItem>
+                                <SelectItem value="none">No specific lesson</SelectItem>
                                 {classLessons?.map((lesson) => (
                                   <SelectItem key={lesson.id} value={lesson.id}>
                                     {lesson.title}
