@@ -1,3 +1,4 @@
+
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -21,7 +22,7 @@ import { LessonsPage } from "@/pages/LessonsPage";
 import { AssignmentsPage } from "@/pages/AssignmentsPage";
 import { GradebookPage } from "@/pages/GradebookPage";
 import NotFound from "./pages/NotFound";
-import AttendancePage from "./pages/AttendancePage";
+import { AttendancePage } from "./pages/AttendancePage";
 
 const queryClient = new QueryClient();
 

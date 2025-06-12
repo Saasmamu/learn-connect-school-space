@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -141,9 +140,12 @@ export const AssignmentsPage: React.FC = () => {
   const saveAssignmentMutation = useMutation({
     mutationFn: async (assignmentData: FormData) => {
       const saveData = {
-        ...assignmentData,
+        title: assignmentData.title,
         description: assignmentData.description || null,
+        class_id: assignmentData.class_id,
         lesson_id: assignmentData.lesson_id || null,
+        assignment_type: assignmentData.assignment_type,
+        max_points: assignmentData.max_points,
         due_date: assignmentData.due_date ? new Date(assignmentData.due_date).toISOString() : null,
         created_by: user?.id,
       };

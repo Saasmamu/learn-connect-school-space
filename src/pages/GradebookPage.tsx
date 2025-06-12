@@ -8,14 +8,14 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { Award, Search, Edit, TrendingUp, BarChart3, Users } from 'lucide-react';
+import { Award, Search, Edit } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 const gradeSchema = z.object({
@@ -92,38 +92,34 @@ export const GradebookPage: React.FC = () => {
     enabled: selectedClass !== 'all',
   });
 
-  // Fetch grades/submissions based on user role
+  // Fetch data based on user role - simplified approach
   const { data: gradesData, isLoading } = useQuery({
     queryKey: ['grades', selectedClass, selectedAssignment, user?.role],
     queryFn: async () => {
+      if (selectedClass === 'all') return [];
+
       if (user?.role === 'student') {
         // Students see their own grades
-        let query = supabase
+        const { data, error } = await supabase
           .from('grades')
           .select(`
             *,
-            assignments(title, max_points, class_id, classes(name)),
-            submissions(content, submitted_at)
+            assignments(title, max_points, classes(name))
           `)
           .eq('student_id', user.id)
           .order('graded_at', { ascending: false });
 
-        if (selectedClass !== 'all') {
-          query = query.eq('assignments.class_id', selectedClass);
-        }
-
-        const { data, error } = await query;
         if (error) throw error;
         return data;
       } else {
-        // Teachers/Admins see submissions needing grading or all grades
+        // Teachers/Admins see submissions for grading
         let query = supabase
           .from('submissions')
           .select(`
             *,
             assignments(id, title, max_points, class_id, classes(name)),
             profiles!submissions_student_id_fkey(full_name, email),
-            grades(id, points_earned, feedback, graded_at, profiles!grades_graded_by_fkey(full_name))
+            grades(id, points_earned, feedback, graded_at)
           `)
           .order('submitted_at', { ascending: false });
 
@@ -196,12 +192,10 @@ export const GradebookPage: React.FC = () => {
   const filteredData = gradesData?.filter(item => {
     const searchText = searchTerm.toLowerCase();
     if (user?.role === 'student') {
-      return item.assignments?.title?.toLowerCase().includes(searchText) ||
-             item.assignments?.classes?.name?.toLowerCase().includes(searchText);
+      return item.assignments?.title?.toLowerCase().includes(searchText);
     } else {
       return item.assignments?.title?.toLowerCase().includes(searchText) ||
-             item.profiles?.full_name?.toLowerCase().includes(searchText) ||
-             item.assignments?.classes?.name?.toLowerCase().includes(searchText);
+             item.profiles?.full_name?.toLowerCase().includes(searchText);
     }
   }) || [];
 
@@ -376,9 +370,9 @@ export const GradebookPage: React.FC = () => {
                       </TableCell>
                       <TableCell>
                         {user?.role === 'student' 
-                          ? item.submissions?.submitted_at 
-                            ? new Date(item.submissions.submitted_at).toLocaleDateString()
-                            : 'Not submitted'
+                          ? item.graded_at 
+                            ? new Date(item.graded_at).toLocaleDateString()
+                            : 'Not graded'
                           : new Date(item.submitted_at).toLocaleDateString()
                         }
                       </TableCell>
