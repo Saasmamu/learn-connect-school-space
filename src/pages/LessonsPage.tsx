@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -114,10 +113,13 @@ export const LessonsPage: React.FC = () => {
   const saveLessonMutation = useMutation({
     mutationFn: async (lessonData: FormData) => {
       const saveData = {
-        ...lessonData,
+        title: lessonData.title, // Ensure title is always included and not optional
+        class_id: lessonData.class_id,
         video_url: lessonData.video_url || null,
         description: lessonData.description || null,
         content: lessonData.content || null,
+        duration_minutes: lessonData.duration_minutes,
+        lesson_order: lessonData.lesson_order,
         created_by: user?.id,
       };
 
