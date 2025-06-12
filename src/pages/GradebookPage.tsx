@@ -25,6 +25,61 @@ const gradeSchema = z.object({
 
 type GradeFormData = z.infer<typeof gradeSchema>;
 
+// Type guards for better type safety
+type StudentGradeData = {
+  id: string;
+  assignment_id: string;
+  student_id: string;
+  points_earned: number;
+  max_points: number;
+  feedback: string;
+  graded_at: string;
+  assignments: {
+    title: string;
+    max_points: number;
+    classes: {
+      name: string;
+    };
+  };
+};
+
+type TeacherSubmissionData = {
+  id: string;
+  assignment_id: string;
+  student_id: string;
+  content: string;
+  file_url: string;
+  submitted_at: string;
+  is_late: boolean;
+  assignments: {
+    id: string;
+    title: string;
+    max_points: number;
+    class_id: string;
+    classes: {
+      name: string;
+    };
+  };
+  profiles: {
+    full_name: string;
+    email: string;
+  };
+  grades: Array<{
+    id: string;
+    points_earned: number;
+    feedback: string;
+    graded_at: string;
+  }>;
+};
+
+const isStudentGradeData = (item: any): item is StudentGradeData => {
+  return item && typeof item.graded_at === 'string' && !item.submitted_at;
+};
+
+const isTeacherSubmissionData = (item: any): item is TeacherSubmissionData => {
+  return item && typeof item.submitted_at === 'string' && item.profiles;
+};
+
 export const GradebookPage: React.FC = () => {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -33,7 +88,7 @@ export const GradebookPage: React.FC = () => {
   const [selectedClass, setSelectedClass] = useState<string>('all');
   const [selectedAssignment, setSelectedAssignment] = useState<string>('all');
   const [isGradeDialogOpen, setIsGradeDialogOpen] = useState(false);
-  const [gradingSubmission, setGradingSubmission] = useState<any>(null);
+  const [gradingSubmission, setGradingSubmission] = useState<TeacherSubmissionData | null>(null);
 
   const gradeForm = useForm<GradeFormData>({
     resolver: zodResolver(gradeSchema),
@@ -92,56 +147,63 @@ export const GradebookPage: React.FC = () => {
     enabled: selectedClass !== 'all',
   });
 
-  // Fetch data based on user role - simplified approach
-  const { data: gradesData, isLoading } = useQuery({
-    queryKey: ['grades', selectedClass, selectedAssignment, user?.role],
+  // Fetch student grades
+  const { data: studentGrades, isLoading: isLoadingStudentGrades } = useQuery({
+    queryKey: ['student-grades', selectedClass, user?.id],
     queryFn: async () => {
       if (selectedClass === 'all') return [];
 
-      if (user?.role === 'student') {
-        // Students see their own grades
-        const { data, error } = await supabase
-          .from('grades')
-          .select(`
-            *,
-            assignments(title, max_points, classes(name))
-          `)
-          .eq('student_id', user.id)
-          .order('graded_at', { ascending: false });
+      const { data, error } = await supabase
+        .from('grades')
+        .select(`
+          *,
+          assignments(title, max_points, classes(name))
+        `)
+        .eq('student_id', user!.id)
+        .order('graded_at', { ascending: false });
 
-        if (error) throw error;
-        return data;
-      } else {
-        // Teachers/Admins see submissions for grading
-        let query = supabase
-          .from('submissions')
-          .select(`
-            *,
-            assignments(id, title, max_points, class_id, classes(name)),
-            profiles!submissions_student_id_fkey(full_name, email),
-            grades(id, points_earned, feedback, graded_at)
-          `)
-          .order('submitted_at', { ascending: false });
-
-        if (selectedClass !== 'all') {
-          query = query.eq('assignments.class_id', selectedClass);
-        }
-
-        if (selectedAssignment !== 'all') {
-          query = query.eq('assignment_id', selectedAssignment);
-        }
-
-        const { data, error } = await query;
-        if (error) throw error;
-        return data;
-      }
+      if (error) throw error;
+      return data as StudentGradeData[];
     },
-    enabled: !!user && selectedClass !== 'all',
+    enabled: !!user && user.role === 'student' && selectedClass !== 'all',
+  });
+
+  // Fetch teacher submissions for grading
+  const { data: teacherSubmissions, isLoading: isLoadingTeacherSubmissions } = useQuery({
+    queryKey: ['teacher-submissions', selectedClass, selectedAssignment],
+    queryFn: async () => {
+      if (selectedClass === 'all') return [];
+
+      let query = supabase
+        .from('submissions')
+        .select(`
+          *,
+          assignments(id, title, max_points, class_id, classes(name)),
+          profiles!submissions_student_id_fkey(full_name, email),
+          grades(id, points_earned, feedback, graded_at)
+        `)
+        .order('submitted_at', { ascending: false });
+
+      if (selectedClass !== 'all') {
+        query = query.eq('assignments.class_id', selectedClass);
+      }
+
+      if (selectedAssignment !== 'all') {
+        query = query.eq('assignment_id', selectedAssignment);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      return data as TeacherSubmissionData[];
+    },
+    enabled: !!user && (user.role === 'teacher' || user.role === 'admin') && selectedClass !== 'all',
   });
 
   // Grade submission mutation
   const gradeSubmissionMutation = useMutation({
     mutationFn: async (gradeData: GradeFormData) => {
+      if (!gradingSubmission) throw new Error('No submission selected');
+      
       const { error } = await supabase
         .from('grades')
         .upsert({
@@ -157,7 +219,7 @@ export const GradebookPage: React.FC = () => {
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['grades'] });
+      queryClient.invalidateQueries({ queryKey: ['teacher-submissions'] });
       toast({
         title: "Success",
         description: "Grade submitted successfully",
@@ -179,7 +241,7 @@ export const GradebookPage: React.FC = () => {
     gradeSubmissionMutation.mutate(values);
   };
 
-  const openGradeDialog = (submission: any) => {
+  const openGradeDialog = (submission: TeacherSubmissionData) => {
     setGradingSubmission(submission);
     const existingGrade = submission.grades?.[0];
     gradeForm.reset({
@@ -189,14 +251,20 @@ export const GradebookPage: React.FC = () => {
     setIsGradeDialogOpen(true);
   };
 
+  // Get appropriate data based on user role
+  const isStudent = user?.role === 'student';
+  const gradesData = isStudent ? studentGrades : teacherSubmissions;
+  const isLoading = isStudent ? isLoadingStudentGrades : isLoadingTeacherSubmissions;
+
   const filteredData = gradesData?.filter(item => {
     const searchText = searchTerm.toLowerCase();
-    if (user?.role === 'student') {
+    if (isStudent && isStudentGradeData(item)) {
       return item.assignments?.title?.toLowerCase().includes(searchText);
-    } else {
+    } else if (!isStudent && isTeacherSubmissionData(item)) {
       return item.assignments?.title?.toLowerCase().includes(searchText) ||
              item.profiles?.full_name?.toLowerCase().includes(searchText);
     }
+    return false;
   }) || [];
 
   const canGrade = user?.role === 'admin' || user?.role === 'teacher';
@@ -210,10 +278,10 @@ export const GradebookPage: React.FC = () => {
   };
 
   const calculateStats = () => {
-    if (!gradesData || user?.role === 'student') return null;
+    if (!teacherSubmissions || isStudent) return null;
     
-    const totalSubmissions = gradesData.length;
-    const gradedSubmissions = gradesData.filter(s => s.grades?.length > 0).length;
+    const totalSubmissions = teacherSubmissions.length;
+    const gradedSubmissions = teacherSubmissions.filter(s => s.grades?.length > 0).length;
     const pendingGrading = totalSubmissions - gradedSubmissions;
     
     return { totalSubmissions, gradedSubmissions, pendingGrading };
@@ -229,7 +297,7 @@ export const GradebookPage: React.FC = () => {
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Gradebook</h1>
             <p className="text-gray-600">
-              {user?.role === 'student' ? 'View your grades and progress' : 'Grade assignments and track student progress'}
+              {isStudent ? 'View your grades and progress' : 'Grade assignments and track student progress'}
             </p>
           </div>
         </div>
@@ -322,10 +390,10 @@ export const GradebookPage: React.FC = () => {
           <CardHeader>
             <CardTitle className="flex items-center">
               <Award className="mr-2 h-5 w-5" />
-              {user?.role === 'student' ? 'My Grades' : 'Student Submissions & Grades'}
+              {isStudent ? 'My Grades' : 'Student Submissions & Grades'}
             </CardTitle>
             <CardDescription>
-              {user?.role === 'student' ? 'Your assignment grades and feedback' : 'Grade student submissions'}
+              {isStudent ? 'Your assignment grades and feedback' : 'Grade student submissions'}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -339,7 +407,7 @@ export const GradebookPage: React.FC = () => {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    {user?.role !== 'student' && <TableHead>Student</TableHead>}
+                    {!isStudent && <TableHead>Student</TableHead>}
                     <TableHead>Assignment</TableHead>
                     <TableHead>Class</TableHead>
                     <TableHead>Submitted</TableHead>
@@ -350,8 +418,8 @@ export const GradebookPage: React.FC = () => {
                 </TableHeader>
                 <TableBody>
                   {filteredData.map((item, index) => (
-                    <TableRow key={user?.role === 'student' ? item.id : `${item.id}-${index}`}>
-                      {user?.role !== 'student' && (
+                    <TableRow key={`grade-${item.id}-${index}`}>
+                      {!isStudent && isTeacherSubmissionData(item) && (
                         <TableCell>
                           <div>
                             <div className="font-medium">{item.profiles?.full_name}</div>
@@ -369,37 +437,52 @@ export const GradebookPage: React.FC = () => {
                         <Badge variant="outline">{item.assignments?.classes?.name}</Badge>
                       </TableCell>
                       <TableCell>
-                        {user?.role === 'student' 
-                          ? item.graded_at 
-                            ? new Date(item.graded_at).toLocaleDateString()
-                            : 'Not graded'
-                          : new Date(item.submitted_at).toLocaleDateString()
+                        {isStudent && isStudentGradeData(item) 
+                          ? new Date(item.graded_at).toLocaleDateString()
+                          : isTeacherSubmissionData(item)
+                          ? new Date(item.submitted_at).toLocaleDateString()
+                          : 'N/A'
                         }
                       </TableCell>
                       <TableCell>
-                        {(user?.role === 'student' ? item.points_earned !== null : item.grades?.length > 0) ? (
-                          <div className={`font-medium ${getGradeColor(
-                            user?.role === 'student' ? item.points_earned : item.grades[0].points_earned,
-                            item.assignments?.max_points
-                          )}`}>
-                            {user?.role === 'student' ? item.points_earned : item.grades[0].points_earned}/{item.assignments?.max_points}
-                            <span className="text-sm text-gray-500 ml-1">
-                              ({Math.round(((user?.role === 'student' ? item.points_earned : item.grades[0].points_earned) / item.assignments?.max_points) * 100)}%)
-                            </span>
-                          </div>
-                        ) : (
-                          <Badge variant="secondary">Not graded</Badge>
-                        )}
+                        {(() => {
+                          if (isStudent && isStudentGradeData(item) && item.points_earned !== null) {
+                            return (
+                              <div className={`font-medium ${getGradeColor(item.points_earned, item.assignments?.max_points)}`}>
+                                {item.points_earned}/{item.assignments?.max_points}
+                                <span className="text-sm text-gray-500 ml-1">
+                                  ({Math.round((item.points_earned / item.assignments?.max_points) * 100)}%)
+                                </span>
+                              </div>
+                            );
+                          } else if (!isStudent && isTeacherSubmissionData(item) && item.grades?.length > 0) {
+                            const grade = item.grades[0];
+                            return (
+                              <div className={`font-medium ${getGradeColor(grade.points_earned, item.assignments?.max_points)}`}>
+                                {grade.points_earned}/{item.assignments?.max_points}
+                                <span className="text-sm text-gray-500 ml-1">
+                                  ({Math.round((grade.points_earned / item.assignments?.max_points) * 100)}%)
+                                </span>
+                              </div>
+                            );
+                          } else {
+                            return <Badge variant="secondary">Not graded</Badge>;
+                          }
+                        })()}
                       </TableCell>
                       <TableCell className="max-w-xs">
                         <div className="truncate">
-                          {user?.role === 'student' 
-                            ? item.feedback || 'No feedback'
-                            : item.grades?.[0]?.feedback || 'No feedback'
-                          }
+                          {(() => {
+                            if (isStudent && isStudentGradeData(item)) {
+                              return item.feedback || 'No feedback';
+                            } else if (!isStudent && isTeacherSubmissionData(item)) {
+                              return item.grades?.[0]?.feedback || 'No feedback';
+                            }
+                            return 'No feedback';
+                          })()}
                         </div>
                       </TableCell>
-                      {canGrade && (
+                      {canGrade && isTeacherSubmissionData(item) && (
                         <TableCell>
                           <Button
                             variant="ghost"
