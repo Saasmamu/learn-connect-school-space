@@ -84,31 +84,59 @@ export const AssignmentsPage: React.FC = () => {
     queryFn: async (): Promise<AssignmentWithUserData[]> => {
       if (!user?.id) return [];
 
+      console.log('Fetching assignments for user:', user.id, 'role:', user.role);
+
       if (user.role === 'student') {
-        // Get assignments for student's classes
+        // First get the student's classes
+        const { data: studentClasses, error: classError } = await supabase
+          .from('student_classes')
+          .select('class_id')
+          .eq('student_id', user.id);
+
+        if (classError) {
+          console.error('Error fetching student classes:', classError);
+          throw classError;
+        }
+
+        console.log('Student classes:', studentClasses);
+
+        if (!studentClasses || studentClasses.length === 0) {
+          return [];
+        }
+
+        const classIds = studentClasses.map(sc => sc.class_id);
+
+        // Get assignments for these classes
         const { data: assignmentData, error } = await supabase
           .from('assignments')
           .select(`
             *,
             classes:class_id (
               name,
-              grade_level,
-              student_classes!inner (
-                student_id
-              )
+              grade_level
             ),
             profiles:created_by (
               full_name
             )
           `)
-          .eq('classes.student_classes.student_id', user.id)
+          .in('class_id', classIds)
           .eq('is_published', true);
 
-        if (error) throw error;
+        if (error) {
+          console.error('Error fetching assignments:', error);
+          throw error;
+        }
+
+        console.log('Assignment data:', assignmentData);
+        
+        // Ensure we have an array
+        const assignments = assignmentData || [];
         
         // Get submissions and grades for each assignment
         const assignmentsWithStatus = await Promise.all(
-          (assignmentData || []).map(async (assignment) => {
+          assignments.map(async (assignment) => {
+            console.log('Processing assignment:', assignment.id);
+            
             const [submissionResult, gradeResult] = await Promise.all([
               supabase
                 .from('submissions')
@@ -125,6 +153,9 @@ export const AssignmentsPage: React.FC = () => {
                 .eq('student_id', user.id)
                 .maybeSingle()
             ]);
+
+            console.log('Submission result:', submissionResult);
+            console.log('Grade result:', gradeResult);
 
             return {
               ...assignment,
@@ -155,7 +186,12 @@ export const AssignmentsPage: React.FC = () => {
         }
 
         const { data, error } = await query;
-        if (error) throw error;
+        if (error) {
+          console.error('Error fetching assignments for teacher/admin:', error);
+          throw error;
+        }
+        
+        console.log('Teacher/admin assignments:', data);
         return (data || []) as AssignmentWithUserData[];
       }
     },
