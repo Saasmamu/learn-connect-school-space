@@ -29,12 +29,38 @@ interface Question {
   question_order: number;
 }
 
+interface AssignmentWithUserData {
+  id: string;
+  title: string;
+  description?: string;
+  assignment_type: string;
+  due_date?: string;
+  time_limit_minutes?: number;
+  class_id: string;
+  is_published: boolean;
+  allow_resubmission: boolean;
+  grading_mode: string;
+  is_required: boolean;
+  max_points?: number;
+  created_at: string;
+  created_by: string;
+  classes?: {
+    name: string;
+    grade_level?: string;
+  };
+  profiles?: {
+    full_name: string;
+  };
+  userSubmission?: any;
+  userGrade?: any;
+}
+
 export const AssignmentsPage: React.FC = () => {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState('all');
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
-  const [selectedAssignment, setSelectedAssignment] = useState<any>(null);
+  const [selectedAssignment, setSelectedAssignment] = useState<AssignmentWithUserData | null>(null);
   const [viewMode, setViewMode] = useState<'list' | 'take' | 'grade'>('list');
   const [questions, setQuestions] = useState<Question[]>([]);
   
@@ -55,7 +81,7 @@ export const AssignmentsPage: React.FC = () => {
   // Fetch assignments with submissions and grades
   const { data: assignments = [], isLoading } = useQuery({
     queryKey: ['assignments', user?.id],
-    queryFn: async () => {
+    queryFn: async (): Promise<AssignmentWithUserData[]> => {
       if (!user?.id) return [];
 
       if (user.role === 'student') {
@@ -104,7 +130,7 @@ export const AssignmentsPage: React.FC = () => {
               ...assignment,
               userSubmission: submissionResult.data,
               userGrade: gradeResult.data
-            };
+            } as AssignmentWithUserData;
           })
         );
 
@@ -130,7 +156,7 @@ export const AssignmentsPage: React.FC = () => {
 
         const { data, error } = await query;
         if (error) throw error;
-        return data || [];
+        return (data || []) as AssignmentWithUserData[];
       }
     },
     enabled: !!user?.id,
@@ -260,7 +286,7 @@ export const AssignmentsPage: React.FC = () => {
     createAssignmentMutation.mutate(formData);
   };
 
-  const getStatusBadge = (assignment: any) => {
+  const getStatusBadge = (assignment: AssignmentWithUserData) => {
     if (user?.role === 'student') {
       if (assignment.userGrade) {
         return <Badge variant="default">Graded</Badge>;
@@ -300,12 +326,12 @@ export const AssignmentsPage: React.FC = () => {
     return assignment.assignment_type === activeTab;
   });
 
-  const handleTakeAssignment = (assignment: any) => {
+  const handleTakeAssignment = (assignment: AssignmentWithUserData) => {
     setSelectedAssignment(assignment);
     setViewMode('take');
   };
 
-  const handleViewGrade = (assignment: any) => {
+  const handleViewGrade = (assignment: AssignmentWithUserData) => {
     setSelectedAssignment(assignment);
     setViewMode('grade');
   };
