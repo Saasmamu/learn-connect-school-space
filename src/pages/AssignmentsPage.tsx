@@ -59,19 +59,6 @@ export const AssignmentsPage: React.FC = () => {
     queryFn: async () => {
       if (!user?.id) return [];
 
-      let query = supabase
-        .from('assignments')
-        .select(`
-          *,
-          classes:class_id (
-            name,
-            grade_level
-          ),
-          profiles:created_by (
-            full_name
-          )
-        `);
-
       if (user.role === 'student') {
         // Get assignments for student's classes with their submission status
         const { data, error } = await supabase
@@ -114,8 +101,8 @@ export const AssignmentsPage: React.FC = () => {
 
             return {
               ...assignment,
-              submission: submissionResult.data,
-              grade: gradeResult.data
+              userSubmission: submissionResult.data,
+              userGrade: gradeResult.data
             };
           })
         );
@@ -123,6 +110,19 @@ export const AssignmentsPage: React.FC = () => {
         return assignmentsWithStatus;
       } else {
         // For teachers and admins
+        let query = supabase
+          .from('assignments')
+          .select(`
+            *,
+            classes:class_id (
+              name,
+              grade_level
+            ),
+            profiles:created_by (
+              full_name
+            )
+          `);
+
         if (user.role === 'teacher') {
           query = query.eq('created_by', user.id);
         }
@@ -261,10 +261,10 @@ export const AssignmentsPage: React.FC = () => {
 
   const getStatusBadge = (assignment: any) => {
     if (user?.role === 'student') {
-      if (assignment.grade) {
+      if (assignment.userGrade) {
         return <Badge variant="default">Graded</Badge>;
       }
-      if (assignment.submission) {
+      if (assignment.userSubmission) {
         return <Badge variant="secondary">Submitted</Badge>;
       }
       const isOverdue = assignment.due_date && new Date(assignment.due_date) < new Date();
@@ -609,16 +609,16 @@ export const AssignmentsPage: React.FC = () => {
                       
                       {user?.role === 'student' && (
                         <div className="flex space-x-2">
-                          {assignment.grade ? (
+                          {assignment.userGrade ? (
                             <Button
                               variant="outline"
                               size="sm"
                               onClick={() => handleViewGrade(assignment)}
                             >
                               <Eye className="h-4 w-4 mr-1" />
-                              View Grade ({assignment.grade.percentage?.toFixed(1)}%)
+                              View Grade ({assignment.userGrade.percentage?.toFixed(1)}%)
                             </Button>
-                          ) : assignment.submission ? (
+                          ) : assignment.userSubmission ? (
                             <Badge variant="secondary">Submitted</Badge>
                           ) : (
                             <Button

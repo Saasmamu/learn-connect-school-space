@@ -10,20 +10,21 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Clock, FileUp, CheckCircle, AlertCircle } from 'lucide-react';
-import { useToast } from '@/hooks/use-toast';
+import { toast } from 'sonner';
 import { format } from 'date-fns';
 
 interface AssignmentSubmissionProps {
   assignmentId: string;
-  onClose: () => void;
+  studentId: string;
+  onSubmissionComplete: () => void;
 }
 
 export const AssignmentSubmission: React.FC<AssignmentSubmissionProps> = ({
   assignmentId,
-  onClose,
+  studentId,
+  onSubmissionComplete,
 }) => {
   const { user } = useAuth();
-  const { toast } = useToast();
   const queryClient = useQueryClient();
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
@@ -56,10 +57,8 @@ export const AssignmentSubmission: React.FC<AssignmentSubmissionProps> = ({
 
   // Check existing submission
   const { data: existingSubmission } = useQuery({
-    queryKey: ['existing-submission', assignmentId, user?.id],
+    queryKey: ['existing-submission', assignmentId, studentId],
     queryFn: async () => {
-      if (!user?.id) return null;
-      
       const { data, error } = await supabase
         .from('submissions')
         .select(`
@@ -67,7 +66,7 @@ export const AssignmentSubmission: React.FC<AssignmentSubmissionProps> = ({
           assignment_answers:assignment_answers (*)
         `)
         .eq('assignment_id', assignmentId)
-        .eq('student_id', user.id)
+        .eq('student_id', studentId)
         .order('submitted_at', { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -75,7 +74,7 @@ export const AssignmentSubmission: React.FC<AssignmentSubmissionProps> = ({
       if (error) throw error;
       return data;
     },
-    enabled: !!user?.id,
+    enabled: !!studentId,
   });
 
   // Timer effect
@@ -100,14 +99,14 @@ export const AssignmentSubmission: React.FC<AssignmentSubmissionProps> = ({
   // Submit assignment mutation
   const submitMutation = useMutation({
     mutationFn: async () => {
-      if (!user?.id) throw new Error('User not authenticated');
+      if (!studentId) throw new Error('Student ID not provided');
 
       // Create submission
       const { data: submission, error: submissionError } = await supabase
         .from('submissions')
         .insert({
           assignment_id: assignmentId,
-          student_id: user.id,
+          student_id: studentId,
           status: 'submitted',
           started_at: startTime.toISOString(),
           time_spent_minutes: Math.floor((new Date().getTime() - startTime.getTime()) / 60000),
@@ -142,18 +141,11 @@ export const AssignmentSubmission: React.FC<AssignmentSubmissionProps> = ({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['existing-submission'] });
       queryClient.invalidateQueries({ queryKey: ['assignments'] });
-      toast({
-        title: 'Success',
-        description: 'Assignment submitted successfully!',
-      });
-      onClose();
+      toast.success('Assignment submitted successfully!');
+      onSubmissionComplete();
     },
     onError: (error) => {
-      toast({
-        title: 'Error',
-        description: error.message,
-        variant: 'destructive',
-      });
+      toast.error(error.message);
     },
   });
 
@@ -192,7 +184,7 @@ export const AssignmentSubmission: React.FC<AssignmentSubmissionProps> = ({
           <p className="text-gray-600 mb-4">
             You submitted this assignment on {format(new Date(existingSubmission.submitted_at), 'MMM dd, yyyy HH:mm')}
           </p>
-          <Button onClick={onClose}>Close</Button>
+          <Button onClick={onSubmissionComplete}>Close</Button>
         </CardContent>
       </Card>
     );
@@ -293,7 +285,7 @@ export const AssignmentSubmission: React.FC<AssignmentSubmissionProps> = ({
 
       {/* Submit Button */}
       <div className="flex justify-between">
-        <Button variant="outline" onClick={onClose}>
+        <Button variant="outline" onClick={onSubmissionComplete}>
           Cancel
         </Button>
         <Button 
