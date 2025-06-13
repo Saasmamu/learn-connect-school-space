@@ -3,42 +3,22 @@ import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import * as z from 'zod';
-import { FileText, Plus, Search, Edit, Calendar, Award, Users, Play, Eye, BookOpen } from 'lucide-react';
-import { useToast } from '@/hooks/use-toast';
+import { Plus, Calendar, Clock, Users, BookOpen, FileText, Upload, Eye, Edit, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
-import { Link } from 'react-router-dom';
+import { toast } from 'sonner';
 import { QuestionBuilder } from '@/components/assignments/QuestionBuilder';
 import { AssignmentSubmission } from '@/components/assignments/AssignmentSubmission';
 import { GradeView } from '@/components/assignments/GradeView';
-
-const formSchema = z.object({
-  title: z.string().min(2, 'Title must be at least 2 characters'),
-  description: z.string().optional(),
-  class_id: z.string().min(1, 'Please select a class'),
-  lesson_id: z.string().optional(),
-  assignment_type: z.enum(['homework', 'quiz', 'project', 'exam']),
-  max_points: z.number().min(1, 'Points must be at least 1'),
-  due_date: z.string().optional(),
-  time_limit_minutes: z.number().optional(),
-  grading_mode: z.enum(['manual', 'auto']),
-  allow_resubmission: z.boolean(),
-  is_required: z.boolean(),
-});
-
-type FormData = z.infer<typeof formSchema>;
 
 interface Question {
   id: string;
@@ -52,740 +32,612 @@ interface Question {
 
 export const AssignmentsPage: React.FC = () => {
   const { user } = useAuth();
-  const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [searchTerm, setSearchTerm] = useState('');
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [editingAssignment, setEditingAssignment] = useState<any>(null);
-  const [selectedClass, setSelectedClass] = useState<string>('all');
-  const [selectedType, setSelectedType] = useState<string>('all');
+  const [activeTab, setActiveTab] = useState('all');
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [selectedAssignment, setSelectedAssignment] = useState<any>(null);
+  const [viewMode, setViewMode] = useState<'list' | 'take' | 'grade'>('list');
   const [questions, setQuestions] = useState<Question[]>([]);
-  const [submissionDialog, setSubmissionDialog] = useState<string | null>(null);
-  const [gradeDialog, setGradeDialog] = useState<{ assignmentId: string; studentId: string } | null>(null);
-
-  const form = useForm<FormData>({
-    resolver: zodResolver(formSchema),
-    defaultValues: {
-      title: '',
-      description: '',
-      class_id: '',
-      lesson_id: '',
-      assignment_type: 'homework',
-      max_points: 100,
-      due_date: '',
-      time_limit_minutes: 0,
-      grading_mode: 'manual',
-      allow_resubmission: false,
-      is_required: true,
-    },
+  
+  const [formData, setFormData] = useState({
+    title: '',
+    description: '',
+    assignment_type: 'homework',
+    due_date: '',
+    time_limit_minutes: '',
+    class_id: '',
+    is_published: false,
+    allow_resubmission: false,
+    grading_mode: 'manual',
+    is_required: true,
+    reference_materials: [] as any[],
   });
 
-  // Fetch user's classes
-  const { data: userClasses, isLoading: classesLoading } = useQuery({
-    queryKey: ['user-classes-assignments', user?.role],
+  // Fetch assignments with submissions and grades
+  const { data: assignments = [], isLoading } = useQuery({
+    queryKey: ['assignments', user?.id],
     queryFn: async () => {
-      if (!user) return [];
-      
-      if (user?.role === 'admin') {
-        const { data, error } = await supabase
-          .from('classes')
-          .select('*')
-          .order('name');
-        if (error) throw error;
-        return data || [];
-      } else if (user?.role === 'teacher') {
-        const { data, error } = await supabase
-          .from('teacher_classes')
-          .select('classes(*)')
-          .eq('teacher_id', user.id);
-        if (error) throw error;
-        return data.map(tc => tc.classes).filter(Boolean) || [];
-      } else {
-        const { data, error } = await supabase
-          .from('student_classes')
-          .select('classes(*)')
-          .eq('student_id', user.id);
-        if (error) throw error;
-        return data.map(sc => sc.classes).filter(Boolean) || [];
-      }
-    },
-    enabled: !!user,
-  });
+      if (!user?.id) return [];
 
-  // Fetch assignments with grades for students
-  const { data: assignments, isLoading } = useQuery({
-    queryKey: ['assignments', selectedClass, selectedType, user?.role],
-    queryFn: async () => {
       let query = supabase
         .from('assignments')
         .select(`
           *,
-          classes(name),
-          lessons(title),
-          profiles!assignments_created_by_fkey(full_name)
-        `)
-        .order('created_at', { ascending: false });
+          classes:class_id (
+            name,
+            grade_level
+          ),
+          profiles:created_by (
+            full_name
+          )
+        `);
 
-      if (selectedClass !== 'all') {
-        query = query.eq('class_id', selectedClass);
-      }
-
-      if (selectedType !== 'all') {
-        query = query.eq('assignment_type', selectedType);
-      }
-
-      if (user?.role === 'student') {
-        query = query.eq('is_published', true);
-      }
-
-      const { data: assignmentData, error } = await query;
-      if (error) throw error;
-
-      // For students, also fetch their grades and submissions
-      if (user?.role === 'student' && assignmentData) {
-        const assignmentIds = assignmentData.map(a => a.id);
-        
-        const { data: grades } = await supabase
-          .from('grades')
-          .select('assignment_id, points_earned, max_points, percentage')
-          .eq('student_id', user.id)
-          .in('assignment_id', assignmentIds);
-
-        const { data: submissions } = await supabase
-          .from('submissions')
-          .select('assignment_id, status, submitted_at')
-          .eq('student_id', user.id)
-          .in('assignment_id', assignmentIds);
-
-        return assignmentData.map(assignment => ({
-          ...assignment,
-          grade: grades?.find(g => g.assignment_id === assignment.id),
-          submission: submissions?.find(s => s.assignment_id === assignment.id),
-        }));
-      }
-
-      return assignmentData;
-    },
-    enabled: !!user,
-  });
-
-  // Create/Update assignment mutation
-  const saveAssignmentMutation = useMutation({
-    mutationFn: async (assignmentData: FormData) => {
-      const saveData = {
-        title: assignmentData.title,
-        description: assignmentData.description || null,
-        class_id: assignmentData.class_id,
-        lesson_id: assignmentData.lesson_id && assignmentData.lesson_id !== 'none' ? assignmentData.lesson_id : null,
-        assignment_type: assignmentData.assignment_type,
-        max_points: assignmentData.max_points,
-        due_date: assignmentData.due_date ? new Date(assignmentData.due_date).toISOString() : null,
-        time_limit_minutes: assignmentData.time_limit_minutes || null,
-        grading_mode: assignmentData.grading_mode,
-        allow_resubmission: assignmentData.allow_resubmission,
-        is_required: assignmentData.is_required,
-        created_by: user?.id,
-      };
-
-      let assignmentId: string;
-
-      if (editingAssignment) {
-        const { error } = await supabase
-          .from('assignments')
-          .update(saveData)
-          .eq('id', editingAssignment.id);
-        if (error) throw error;
-        assignmentId = editingAssignment.id;
-      } else {
+      if (user.role === 'student') {
+        // Get assignments for student's classes with their submission status
         const { data, error } = await supabase
           .from('assignments')
-          .insert(saveData)
-          .select()
-          .single();
-        if (error) throw error;
-        assignmentId = data.id;
-      }
+          .select(`
+            *,
+            classes:class_id (
+              name,
+              grade_level,
+              student_classes!inner (
+                student_id
+              )
+            ),
+            profiles:created_by (
+              full_name
+            )
+          `)
+          .eq('classes.student_classes.student_id', user.id)
+          .eq('is_published', true);
 
-      // Save questions
-      if (questions.length > 0) {
-        // Delete existing questions if editing
-        if (editingAssignment) {
-          await supabase
-            .from('assignment_questions')
-            .delete()
-            .eq('assignment_id', assignmentId);
+        if (error) throw error;
+        
+        // Get submissions and grades for each assignment
+        const assignmentsWithStatus = await Promise.all(
+          (data || []).map(async (assignment) => {
+            const [submissionResult, gradeResult] = await Promise.all([
+              supabase
+                .from('submissions')
+                .select('*')
+                .eq('assignment_id', assignment.id)
+                .eq('student_id', user.id)
+                .maybeSingle(),
+              supabase
+                .from('grades')
+                .select('*')
+                .eq('assignment_id', assignment.id)
+                .eq('student_id', user.id)
+                .maybeSingle()
+            ]);
+
+            return {
+              ...assignment,
+              submission: submissionResult.data,
+              grade: gradeResult.data
+            };
+          })
+        );
+
+        return assignmentsWithStatus;
+      } else {
+        // For teachers and admins
+        if (user.role === 'teacher') {
+          query = query.eq('created_by', user.id);
         }
 
-        const questionData = questions.map((q, index) => ({
-          assignment_id: assignmentId,
+        const { data, error } = await query;
+        if (error) throw error;
+        return data || [];
+      }
+    },
+    enabled: !!user?.id,
+  });
+
+  // Fetch classes for assignment creation
+  const { data: classes = [] } = useQuery({
+    queryKey: ['classes', user?.id],
+    queryFn: async () => {
+      if (!user?.id) return [];
+
+      let query = supabase.from('classes').select('*');
+
+      if (user.role === 'teacher') {
+        const { data, error } = await supabase
+          .from('classes')
+          .select(`
+            *,
+            teacher_classes!inner (
+              teacher_id
+            )
+          `)
+          .eq('teacher_classes.teacher_id', user.id);
+
+        if (error) throw error;
+        return data || [];
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!user?.id && user.role !== 'student',
+  });
+
+  // Create assignment mutation
+  const createAssignmentMutation = useMutation({
+    mutationFn: async (assignmentData: any) => {
+      const { data: assignment, error } = await supabase
+        .from('assignments')
+        .insert({
+          ...assignmentData,
+          created_by: user?.id,
+          time_limit_minutes: assignmentData.time_limit_minutes ? parseInt(assignmentData.time_limit_minutes) : null,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // Create questions if any
+      if (questions.length > 0) {
+        const questionsToInsert = questions.map(q => ({
+          assignment_id: assignment.id,
           question_text: q.question_text,
           question_type: q.question_type,
+          question_order: q.question_order,
           points: q.points,
           options: q.options ? JSON.stringify(q.options) : null,
-          correct_answer: q.correct_answer || null,
-          question_order: index,
+          correct_answer: q.correct_answer,
         }));
 
         const { error: questionsError } = await supabase
           .from('assignment_questions')
-          .insert(questionData);
+          .insert(questionsToInsert);
 
         if (questionsError) throw questionsError;
       }
+
+      return assignment;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['assignments'] });
-      toast({
-        title: "Success",
-        description: editingAssignment ? "Assignment updated successfully" : "Assignment created successfully",
-      });
-      setIsDialogOpen(false);
-      setEditingAssignment(null);
-      setQuestions([]);
-      form.reset();
+      setIsCreateDialogOpen(false);
+      resetForm();
+      toast.success('Assignment created successfully');
     },
     onError: (error) => {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
+      console.error('Error creating assignment:', error);
+      toast.error('Failed to create assignment');
     },
   });
 
-  // Toggle publish mutation
-  const togglePublishMutation = useMutation({
-    mutationFn: async ({ assignmentId, isPublished }: { assignmentId: string; isPublished: boolean }) => {
+  // Delete assignment mutation
+  const deleteAssignmentMutation = useMutation({
+    mutationFn: async (assignmentId: string) => {
       const { error } = await supabase
         .from('assignments')
-        .update({ is_published: !isPublished })
+        .delete()
         .eq('id', assignmentId);
+
       if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['assignments'] });
-      toast({
-        title: "Success",
-        description: "Assignment status updated",
-      });
+      toast.success('Assignment deleted successfully');
+    },
+    onError: (error) => {
+      console.error('Error deleting assignment:', error);
+      toast.error('Failed to delete assignment');
     },
   });
 
-  const onSubmit = (values: FormData) => {
-    saveAssignmentMutation.mutate(values);
-  };
-
-  const openEditDialog = (assignment: any) => {
-    setEditingAssignment(assignment);
-    form.reset({
-      title: assignment.title,
-      description: assignment.description || '',
-      class_id: assignment.class_id,
-      lesson_id: assignment.lesson_id || 'none',
-      assignment_type: assignment.assignment_type,
-      max_points: assignment.max_points,
-      due_date: assignment.due_date ? format(new Date(assignment.due_date), 'yyyy-MM-dd\'T\'HH:mm') : '',
-      time_limit_minutes: assignment.time_limit_minutes || 0,
-      grading_mode: assignment.grading_mode || 'manual',
-      allow_resubmission: assignment.allow_resubmission || false,
-      is_required: assignment.is_required ?? true,
+  const resetForm = () => {
+    setFormData({
+      title: '',
+      description: '',
+      assignment_type: 'homework',
+      due_date: '',
+      time_limit_minutes: '',
+      class_id: '',
+      is_published: false,
+      allow_resubmission: false,
+      grading_mode: 'manual',
+      is_required: true,
+      reference_materials: [],
     });
-    setIsDialogOpen(true);
+    setQuestions([]);
   };
 
-  const filteredAssignments = assignments?.filter(assignment =>
-    assignment.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    assignment.classes?.name?.toLowerCase().includes(searchTerm.toLowerCase())
-  ) || [];
-
-  const canManageAssignments = user?.role === 'admin' || user?.role === 'teacher';
-
-  const getTypeColor = (type: string) => {
-    switch (type) {
-      case 'homework': return 'bg-blue-100 text-blue-800';
-      case 'quiz': return 'bg-green-100 text-green-800';
-      case 'project': return 'bg-purple-100 text-purple-800';
-      case 'exam': return 'bg-red-100 text-red-800';
-      default: return 'bg-gray-100 text-gray-800';
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.title || !formData.class_id) {
+      toast.error('Please fill in all required fields');
+      return;
     }
+    createAssignmentMutation.mutate(formData);
   };
 
   const getStatusBadge = (assignment: any) => {
-    if (user?.role !== 'student') return null;
-    
-    if (assignment.submission) {
+    if (user?.role === 'student') {
       if (assignment.grade) {
         return <Badge variant="default">Graded</Badge>;
       }
-      return <Badge variant="secondary">Submitted</Badge>;
+      if (assignment.submission) {
+        return <Badge variant="secondary">Submitted</Badge>;
+      }
+      const isOverdue = assignment.due_date && new Date(assignment.due_date) < new Date();
+      if (isOverdue) {
+        return <Badge variant="destructive">Overdue</Badge>;
+      }
+      return <Badge variant="outline">Pending</Badge>;
     }
     
-    if (assignment.due_date && new Date(assignment.due_date) < new Date()) {
-      return <Badge variant="destructive">Overdue</Badge>;
-    }
-    
-    return <Badge variant="outline">Pending</Badge>;
+    return (
+      <Badge variant={assignment.is_published ? 'default' : 'secondary'}>
+        {assignment.is_published ? 'Published' : 'Draft'}
+      </Badge>
+    );
   };
 
-  if (classesLoading) {
+  const getTypeIcon = (type: string) => {
+    switch (type) {
+      case 'quiz':
+        return <BookOpen className="h-4 w-4" />;
+      case 'exam':
+        return <FileText className="h-4 w-4" />;
+      case 'homework':
+        return <Upload className="h-4 w-4" />;
+      default:
+        return <FileText className="h-4 w-4" />;
+    }
+  };
+
+  const filteredAssignments = assignments.filter(assignment => {
+    if (activeTab === 'all') return true;
+    return assignment.assignment_type === activeTab;
+  });
+
+  const handleTakeAssignment = (assignment: any) => {
+    setSelectedAssignment(assignment);
+    setViewMode('take');
+  };
+
+  const handleViewGrade = (assignment: any) => {
+    setSelectedAssignment(assignment);
+    setViewMode('grade');
+  };
+
+  if (viewMode === 'take' && selectedAssignment) {
     return (
-      <div className="min-h-screen bg-gray-50 p-4 md:p-6">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center py-8">Loading classes...</div>
-        </div>
+      <div className="container mx-auto py-6">
+        <Button 
+          variant="outline" 
+          onClick={() => setViewMode('list')}
+          className="mb-4"
+        >
+          ← Back to Assignments
+        </Button>
+        <AssignmentSubmission
+          assignmentId={selectedAssignment.id}
+          studentId={user?.id || ''}
+          onSubmissionComplete={() => {
+            setViewMode('list');
+            queryClient.invalidateQueries({ queryKey: ['assignments'] });
+          }}
+        />
+      </div>
+    );
+  }
+
+  if (viewMode === 'grade' && selectedAssignment) {
+    return (
+      <div className="container mx-auto py-6">
+        <Button 
+          variant="outline" 
+          onClick={() => setViewMode('list')}
+          className="mb-4"
+        >
+          ← Back to Assignments
+        </Button>
+        <GradeView
+          assignmentId={selectedAssignment.id}
+          studentId={user?.id || ''}
+        />
+      </div>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div className="container mx-auto py-6">
+        <div className="text-center">Loading assignments...</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4 md:p-6">
-      <div className="max-w-7xl mx-auto space-y-6">
-        {/* Header */}
-        <div className="flex justify-between items-center">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">Assignment Management</h1>
-            <p className="text-gray-600">
-              {user?.role === 'student' ? 'View and complete your assignments' : 'Create and manage assignments'}
-            </p>
-          </div>
-          {canManageAssignments && (
-            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-              <DialogTrigger asChild>
-                <Button 
-                  onClick={() => { 
-                    setEditingAssignment(null); 
-                    setQuestions([]);
-                    form.reset(); 
-                  }}
-                  disabled={!userClasses || userClasses.length === 0}
-                >
-                  <Plus className="mr-2 h-4 w-4" />
-                  Add Assignment
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto">
-                <DialogHeader>
-                  <DialogTitle>{editingAssignment ? 'Edit Assignment' : 'Create New Assignment'}</DialogTitle>
-                  <DialogDescription>
-                    {editingAssignment ? 'Update assignment information' : 'Create a new assignment with questions'}
-                  </DialogDescription>
-                </DialogHeader>
-                
-                <Form {...form}>
-                  <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                    {/* Basic Information */}
-                    <div className="grid grid-cols-2 gap-4">
-                      <FormField
-                        control={form.control}
-                        name="class_id"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Class</FormLabel>
-                            <Select onValueChange={field.onChange} defaultValue={field.value}>
-                              <FormControl>
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Select a class" />
-                                </SelectTrigger>
-                              </FormControl>
-                              <SelectContent>
-                                {userClasses?.map((cls) => (
-                                  <SelectItem key={cls.id} value={cls.id}>
-                                    {cls.name}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      
-                      <FormField
-                        control={form.control}
-                        name="assignment_type"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Type</FormLabel>
-                            <Select onValueChange={field.onChange} defaultValue={field.value}>
-                              <FormControl>
-                                <SelectTrigger>
-                                  <SelectValue />
-                                </SelectTrigger>
-                              </FormControl>
-                              <SelectContent>
-                                <SelectItem value="homework">Homework</SelectItem>
-                                <SelectItem value="quiz">Quiz</SelectItem>
-                                <SelectItem value="project">Project</SelectItem>
-                                <SelectItem value="exam">Exam</SelectItem>
-                              </SelectContent>
-                            </Select>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    </div>
-
-                    <FormField
-                      control={form.control}
-                      name="title"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Assignment Title</FormLabel>
-                          <FormControl>
-                            <Input {...field} placeholder="e.g., Algebra Problem Set 1" />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    <FormField
-                      control={form.control}
-                      name="description"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Description</FormLabel>
-                          <FormControl>
-                            <Textarea {...field} rows={3} placeholder="Assignment instructions..." />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    {/* Settings */}
-                    <div className="grid grid-cols-2 gap-4">
-                      <FormField
-                        control={form.control}
-                        name="max_points"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Max Points</FormLabel>
-                            <FormControl>
-                              <Input 
-                                type="number" 
-                                {...field} 
-                                onChange={(e) => field.onChange(parseInt(e.target.value))}
-                                placeholder="100" 
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-
-                      <FormField
-                        control={form.control}
-                        name="time_limit_minutes"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Time Limit (minutes)</FormLabel>
-                            <FormControl>
-                              <Input 
-                                type="number" 
-                                {...field} 
-                                onChange={(e) => field.onChange(parseInt(e.target.value) || 0)}
-                                placeholder="0 for no limit" 
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <FormField
-                        control={form.control}
-                        name="due_date"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Due Date (Optional)</FormLabel>
-                            <FormControl>
-                              <Input type="datetime-local" {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-
-                      <FormField
-                        control={form.control}
-                        name="grading_mode"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Grading Mode</FormLabel>
-                            <Select onValueChange={field.onChange} defaultValue={field.value}>
-                              <FormControl>
-                                <SelectTrigger>
-                                  <SelectValue />
-                                </SelectTrigger>
-                              </FormControl>
-                              <SelectContent>
-                                <SelectItem value="manual">Manual</SelectItem>
-                                <SelectItem value="auto">Auto (for MCQ)</SelectItem>
-                              </SelectContent>
-                            </Select>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    </div>
-
-                    {/* Toggles */}
-                    <div className="grid grid-cols-2 gap-4">
-                      <FormField
-                        control={form.control}
-                        name="allow_resubmission"
-                        render={({ field }) => (
-                          <FormItem className="flex items-center justify-between rounded-lg border p-3">
-                            <div className="space-y-0.5">
-                              <FormLabel>Allow Resubmission</FormLabel>
-                            </div>
-                            <FormControl>
-                              <Switch
-                                checked={field.value}
-                                onCheckedChange={field.onChange}
-                              />
-                            </FormControl>
-                          </FormItem>
-                        )}
-                      />
-
-                      <FormField
-                        control={form.control}
-                        name="is_required"
-                        render={({ field }) => (
-                          <FormItem className="flex items-center justify-between rounded-lg border p-3">
-                            <div className="space-y-0.5">
-                              <FormLabel>Required Submission</FormLabel>
-                            </div>
-                            <FormControl>
-                              <Switch
-                                checked={field.value}
-                                onCheckedChange={field.onChange}
-                              />
-                            </FormControl>
-                          </FormItem>
-                        )}
-                      />
-                    </div>
-
-                    {/* Questions Builder */}
-                    <QuestionBuilder questions={questions} onQuestionsChange={setQuestions} />
-
-                    <DialogFooter>
-                      <Button type="submit" disabled={saveAssignmentMutation.isPending}>
-                        {editingAssignment ? 'Update' : 'Create'} Assignment
-                      </Button>
-                    </DialogFooter>
-                  </form>
-                </Form>
-              </DialogContent>
-            </Dialog>
-          )}
+    <div className="container mx-auto py-6">
+      <div className="flex justify-between items-center mb-6">
+        <div>
+          <h1 className="text-3xl font-bold">Assignments</h1>
+          <p className="text-gray-600">
+            {user?.role === 'student' 
+              ? 'View and complete your assignments' 
+              : 'Manage assignments, quizzes, and exams'
+            }
+          </p>
         </div>
 
-        {/* Filters */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center space-x-2">
-                <Search className="h-4 w-4 text-gray-400" />
-                <Input
-                  placeholder="Search assignments..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="border-none shadow-none focus-visible:ring-0"
-                />
-              </div>
-            </CardContent>
-          </Card>
-          
-          <Card>
-            <CardContent className="p-4">
-              <Select value={selectedClass} onValueChange={setSelectedClass}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Filter by class" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Classes</SelectItem>
-                  {userClasses?.map((cls) => (
-                    <SelectItem key={cls.id} value={cls.id}>
-                      {cls.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </CardContent>
-          </Card>
-          
-          <Card>
-            <CardContent className="p-4">
-              <Select value={selectedType} onValueChange={setSelectedType}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Filter by type" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Types</SelectItem>
-                  <SelectItem value="homework">Homework</SelectItem>
-                  <SelectItem value="quiz">Quiz</SelectItem>
-                  <SelectItem value="project">Project</SelectItem>
-                  <SelectItem value="exam">Exam</SelectItem>
-                </SelectContent>
-              </Select>
-            </CardContent>
-          </Card>
-          
-          <Card>
-            <CardContent className="p-4">
-              <div className="text-center">
-                <div className="text-2xl font-bold text-purple-600">
-                  {filteredAssignments.length}
+        {user?.role !== 'student' && (
+          <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+            <DialogTrigger asChild>
+              <Button>
+                <Plus className="h-4 w-4 mr-2" />
+                Create Assignment
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Create New Assignment</DialogTitle>
+              </DialogHeader>
+              
+              <form onSubmit={handleSubmit} className="space-y-6">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="title">Title *</Label>
+                    <Input
+                      id="title"
+                      value={formData.title}
+                      onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                      required
+                    />
+                  </div>
+                  
+                  <div>
+                    <Label htmlFor="assignment_type">Type</Label>
+                    <Select
+                      value={formData.assignment_type}
+                      onValueChange={(value) => setFormData({ ...formData, assignment_type: value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="homework">Homework</SelectItem>
+                        <SelectItem value="quiz">Quiz</SelectItem>
+                        <SelectItem value="exam">Exam</SelectItem>
+                        <SelectItem value="assignment">Assignment</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
-                <div className="text-sm text-gray-600">Total Assignments</div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
 
-        {/* Assignments Table */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <FileText className="mr-2 h-5 w-5" />
-              Assignments
-            </CardTitle>
-            <CardDescription>
-              {user?.role === 'student' ? 'Your assigned work' : 'Manage class assignments'}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {isLoading ? (
-              <div className="text-center py-8">Loading...</div>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Title</TableHead>
-                    <TableHead>Class</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Points</TableHead>
-                    <TableHead>Due Date</TableHead>
-                    <TableHead>Status</TableHead>
-                    {user?.role === 'student' && <TableHead>Grade</TableHead>}
-                    <TableHead>Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredAssignments.map((assignment) => (
-                    <TableRow key={assignment.id}>
-                      <TableCell>
-                        <div>
-                          <div className="font-medium">{assignment.title}</div>
-                          <div className="text-sm text-gray-500">{assignment.description?.substring(0, 100)}...</div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline">{assignment.classes?.name}</Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge className={getTypeColor(assignment.assignment_type)}>
-                          {assignment.assignment_type}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center">
-                          <Award className="h-4 w-4 mr-1 text-yellow-500" />
-                          {assignment.max_points}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        {assignment.due_date ? (
-                          <div className="flex items-center">
-                            <Calendar className="h-4 w-4 mr-1 text-gray-400" />
-                            {format(new Date(assignment.due_date), 'MMM dd, yyyy')}
-                          </div>
-                        ) : (
-                          <span className="text-gray-400">No due date</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {getStatusBadge(assignment) || (
-                          <Badge variant={assignment.is_published ? "default" : "secondary"}>
-                            {assignment.is_published ? "Published" : "Draft"}
-                          </Badge>
-                        )}
-                      </TableCell>
-                      {user?.role === 'student' && (
-                        <TableCell>
-                          {assignment.grade ? (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setGradeDialog({ assignmentId: assignment.id, studentId: user.id })}
-                            >
-                              {assignment.grade.percentage?.toFixed(1)}%
-                            </Button>
-                          ) : (
-                            <span className="text-gray-400">-</span>
-                          )}
-                        </TableCell>
-                      )}
-                      <TableCell>
-                        <div className="flex space-x-2">
-                          {user?.role === 'student' && !assignment.submission && (
-                            <Button
-                              size="sm"
-                              onClick={() => setSubmissionDialog(assignment.id)}
-                            >
-                              <Play className="h-4 w-4 mr-1" />
-                              Take
-                            </Button>
-                          )}
-                          {canManageAssignments && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => openEditDialog(assignment)}
-                            >
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                          )}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </CardContent>
-        </Card>
+                <div>
+                  <Label htmlFor="description">Description</Label>
+                  <Textarea
+                    id="description"
+                    value={formData.description}
+                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                    rows={3}
+                  />
+                </div>
 
-        {/* Assignment Submission Dialog */}
-        {submissionDialog && (
-          <Dialog open={true} onOpenChange={() => setSubmissionDialog(null)}>
-            <DialogContent className="sm:max-w-[900px] max-h-[90vh] overflow-y-auto">
-              <AssignmentSubmission 
-                assignmentId={submissionDialog} 
-                onClose={() => setSubmissionDialog(null)}
-              />
-            </DialogContent>
-          </Dialog>
-        )}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="class_id">Class *</Label>
+                    <Select
+                      value={formData.class_id}
+                      onValueChange={(value) => setFormData({ ...formData, class_id: value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a class" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {classes.map((cls) => (
+                          <SelectItem key={cls.id} value={cls.id}>
+                            {cls.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
 
-        {/* Grade View Dialog */}
-        {gradeDialog && (
-          <Dialog open={true} onOpenChange={() => setGradeDialog(null)}>
-            <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto">
-              <GradeView 
-                assignmentId={gradeDialog.assignmentId}
-                studentId={gradeDialog.studentId}
-              />
+                  <div>
+                    <Label htmlFor="due_date">Due Date</Label>
+                    <Input
+                      id="due_date"
+                      type="datetime-local"
+                      value={formData.due_date}
+                      onChange={(e) => setFormData({ ...formData, due_date: e.target.value })}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="time_limit_minutes">Time Limit (minutes)</Label>
+                    <Input
+                      id="time_limit_minutes"
+                      type="number"
+                      value={formData.time_limit_minutes}
+                      onChange={(e) => setFormData({ ...formData, time_limit_minutes: e.target.value })}
+                      placeholder="Leave empty for no limit"
+                    />
+                  </div>
+
+                  <div>
+                    <Label htmlFor="grading_mode">Grading Mode</Label>
+                    <Select
+                      value={formData.grading_mode}
+                      onValueChange={(value) => setFormData({ ...formData, grading_mode: value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="manual">Manual</SelectItem>
+                        <SelectItem value="auto">Auto</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="flex items-center space-x-6">
+                  <div className="flex items-center space-x-2">
+                    <Switch
+                      id="is_published"
+                      checked={formData.is_published}
+                      onCheckedChange={(checked) => setFormData({ ...formData, is_published: checked })}
+                    />
+                    <Label htmlFor="is_published">Publish immediately</Label>
+                  </div>
+
+                  <div className="flex items-center space-x-2">
+                    <Switch
+                      id="allow_resubmission"
+                      checked={formData.allow_resubmission}
+                      onCheckedChange={(checked) => setFormData({ ...formData, allow_resubmission: checked })}
+                    />
+                    <Label htmlFor="allow_resubmission">Allow resubmission</Label>
+                  </div>
+
+                  <div className="flex items-center space-x-2">
+                    <Switch
+                      id="is_required"
+                      checked={formData.is_required}
+                      onCheckedChange={(checked) => setFormData({ ...formData, is_required: checked })}
+                    />
+                    <Label htmlFor="is_required">Required</Label>
+                  </div>
+                </div>
+
+                <QuestionBuilder questions={questions} onQuestionsChange={setQuestions} />
+
+                <div className="flex justify-end space-x-2">
+                  <Button type="button" variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button type="submit" disabled={createAssignmentMutation.isPending}>
+                    {createAssignmentMutation.isPending ? 'Creating...' : 'Create Assignment'}
+                  </Button>
+                </div>
+              </form>
             </DialogContent>
           </Dialog>
         )}
       </div>
+
+      {/* Assignment Type Tabs */}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="mb-6">
+        <TabsList>
+          <TabsTrigger value="all">All</TabsTrigger>
+          <TabsTrigger value="homework">Homework</TabsTrigger>
+          <TabsTrigger value="quiz">Quizzes</TabsTrigger>
+          <TabsTrigger value="exam">Exams</TabsTrigger>
+          <TabsTrigger value="assignment">Assignments</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value={activeTab} className="space-y-4">
+          {filteredAssignments.length === 0 ? (
+            <Card>
+              <CardContent className="text-center py-8">
+                <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                <p className="text-gray-500">No assignments found</p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid gap-4">
+              {filteredAssignments.map((assignment) => (
+                <Card key={assignment.id} className="hover:shadow-md transition-shadow">
+                  <CardHeader>
+                    <div className="flex justify-between items-start">
+                      <div className="flex items-start space-x-3">
+                        {getTypeIcon(assignment.assignment_type)}
+                        <div>
+                          <CardTitle className="text-lg">{assignment.title}</CardTitle>
+                          <p className="text-sm text-gray-600 mt-1">
+                            {assignment.classes?.name} • {assignment.profiles?.full_name}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        {getStatusBadge(assignment)}
+                        {user?.role !== 'student' && (
+                          <div className="flex space-x-1">
+                            <Button variant="ghost" size="sm">
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => deleteAssignmentMutation.mutate(assignment.id)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </CardHeader>
+                  
+                  <CardContent>
+                    {assignment.description && (
+                      <p className="text-gray-700 mb-4">{assignment.description}</p>
+                    )}
+                    
+                    <div className="flex items-center justify-between text-sm text-gray-600">
+                      <div className="flex items-center space-x-4">
+                        {assignment.due_date && (
+                          <div className="flex items-center space-x-1">
+                            <Calendar className="h-4 w-4" />
+                            <span>Due: {format(new Date(assignment.due_date), 'MMM dd, yyyy HH:mm')}</span>
+                          </div>
+                        )}
+                        {assignment.time_limit_minutes && (
+                          <div className="flex items-center space-x-1">
+                            <Clock className="h-4 w-4" />
+                            <span>{assignment.time_limit_minutes} min</span>
+                          </div>
+                        )}
+                        <div className="flex items-center space-x-1">
+                          <Users className="h-4 w-4" />
+                          <span>{assignment.max_points || 100} points</span>
+                        </div>
+                      </div>
+                      
+                      {user?.role === 'student' && (
+                        <div className="flex space-x-2">
+                          {assignment.grade ? (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleViewGrade(assignment)}
+                            >
+                              <Eye className="h-4 w-4 mr-1" />
+                              View Grade ({assignment.grade.percentage?.toFixed(1)}%)
+                            </Button>
+                          ) : assignment.submission ? (
+                            <Badge variant="secondary">Submitted</Badge>
+                          ) : (
+                            <Button
+                              size="sm"
+                              onClick={() => handleTakeAssignment(assignment)}
+                            >
+                              Start Assignment
+                            </Button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </TabsContent>
+      </Tabs>
     </div>
   );
 };

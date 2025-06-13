@@ -28,18 +28,7 @@ export const GradeView: React.FC<GradeViewProps> = ({ assignmentId, studentId })
           ),
           submissions:submission_id (
             submitted_at,
-            time_spent_minutes,
-            assignment_answers:assignment_answers (
-              answer_text,
-              is_correct,
-              points_earned,
-              assignment_questions:question_id (
-                question_text,
-                question_type,
-                points,
-                options
-              )
-            )
+            time_spent_minutes
           )
         `)
         .eq('assignment_id', assignmentId)
@@ -49,6 +38,30 @@ export const GradeView: React.FC<GradeViewProps> = ({ assignmentId, studentId })
       if (error) throw error;
       return data;
     },
+  });
+
+  const { data: answers } = useQuery({
+    queryKey: ['assignment-answers', assignmentId, studentId],
+    queryFn: async () => {
+      if (!grade?.submission_id) return [];
+      
+      const { data, error } = await supabase
+        .from('assignment_answers')
+        .select(`
+          *,
+          assignment_questions:question_id (
+            question_text,
+            question_type,
+            points,
+            options
+          )
+        `)
+        .eq('submission_id', grade.submission_id);
+
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!grade?.submission_id,
   });
 
   if (isLoading) {
@@ -119,15 +132,17 @@ export const GradeView: React.FC<GradeViewProps> = ({ assignmentId, studentId })
             <Progress value={percentage} className="h-3" />
           </div>
 
-          <div className="flex items-center justify-between mt-4 text-sm text-gray-600">
-            <div className="flex items-center gap-2">
-              <Clock className="h-4 w-4" />
-              <span>Submitted: {format(new Date(grade.submissions?.submitted_at), 'MMM dd, yyyy HH:mm')}</span>
+          {grade.submissions?.submitted_at && (
+            <div className="flex items-center justify-between mt-4 text-sm text-gray-600">
+              <div className="flex items-center gap-2">
+                <Clock className="h-4 w-4" />
+                <span>Submitted: {format(new Date(grade.submissions.submitted_at), 'MMM dd, yyyy HH:mm')}</span>
+              </div>
+              <Badge variant={grade.auto_graded ? 'default' : 'secondary'}>
+                {grade.auto_graded ? 'Auto Graded' : 'Manual Grade'}
+              </Badge>
             </div>
-            <Badge variant={grade.auto_graded ? 'default' : 'secondary'}>
-              {grade.auto_graded ? 'Auto Graded' : 'Manual Grade'}
-            </Badge>
-          </div>
+          )}
         </CardContent>
       </Card>
 
@@ -147,15 +162,15 @@ export const GradeView: React.FC<GradeViewProps> = ({ assignmentId, studentId })
       )}
 
       {/* Question Breakdown */}
-      {grade.submissions?.assignment_answers && grade.submissions.assignment_answers.length > 0 && (
+      {answers && answers.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle>Question Breakdown</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {grade.submissions.assignment_answers.map((answer, index) => (
-                <div key={index} className="border rounded-lg p-4">
+              {answers.map((answer, index) => (
+                <div key={answer.id} className="border rounded-lg p-4">
                   <div className="flex justify-between items-start mb-2">
                     <h4 className="font-medium">Question {index + 1}</h4>
                     <Badge variant={answer.is_correct ? 'default' : 'destructive'}>
