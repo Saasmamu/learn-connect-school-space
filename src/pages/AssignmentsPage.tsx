@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -60,8 +59,8 @@ export const AssignmentsPage: React.FC = () => {
       if (!user?.id) return [];
 
       if (user.role === 'student') {
-        // Get assignments for student's classes with their submission status
-        const { data, error } = await supabase
+        // Get assignments for student's classes
+        const { data: assignmentData, error } = await supabase
           .from('assignments')
           .select(`
             *,
@@ -83,13 +82,15 @@ export const AssignmentsPage: React.FC = () => {
         
         // Get submissions and grades for each assignment
         const assignmentsWithStatus = await Promise.all(
-          (data || []).map(async (assignment) => {
+          (assignmentData || []).map(async (assignment) => {
             const [submissionResult, gradeResult] = await Promise.all([
               supabase
                 .from('submissions')
                 .select('*')
                 .eq('assignment_id', assignment.id)
                 .eq('student_id', user.id)
+                .order('submitted_at', { ascending: false })
+                .limit(1)
                 .maybeSingle(),
               supabase
                 .from('grades')
