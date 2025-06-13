@@ -51,14 +51,16 @@ export const AssignmentSubmission: React.FC<AssignmentSubmissionProps> = ({
 
       if (error) throw error;
       
-      // Process the assignment questions to ensure options is properly parsed
+      // Process the assignment questions to ensure options is properly parsed and typed
       if (data?.assignment_questions) {
         data.assignment_questions = data.assignment_questions.map(question => ({
           ...question,
           options: question.options ? 
             (typeof question.options === 'string' ? 
               JSON.parse(question.options) : 
-              question.options
+              Array.isArray(question.options) ? 
+                question.options.map(opt => String(opt)) :
+                []
             ) : 
             []
         }));
@@ -259,11 +261,11 @@ export const AssignmentSubmission: React.FC<AssignmentSubmissionProps> = ({
                     <input
                       type="radio"
                       name={`question-${question.id}`}
-                      value={option}
-                      checked={answers[question.id] === option}
+                      value={String(option)}
+                      checked={answers[question.id] === String(option)}
                       onChange={(e) => updateAnswer(question.id, e.target.value)}
                     />
-                    <span>{option}</span>
+                    <span>{String(option)}</span>
                   </label>
                 ))}
               </div>
