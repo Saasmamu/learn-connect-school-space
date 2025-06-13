@@ -1,193 +1,125 @@
 
-import React, { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import React from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Book, Users, Calendar, Plus, Eye } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Button } from '@/components/ui/button';
+import { BookOpen, Users, GraduationCap, FileText } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 export const TeacherClassesPage: React.FC = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
 
-  // Fetch teacher's assigned classes
-  const { data: teacherClasses, isLoading } = useQuery({
-    queryKey: ['teacher-classes', user?.id],
+  const { data: assignedClasses = [], isLoading } = useQuery({
+    queryKey: ['teacher-classes-detailed', user?.id],
     queryFn: async () => {
+      if (!user?.id) return [];
+      
       const { data, error } = await supabase
         .from('teacher_classes')
         .select(`
           *,
-          classes(
+          classes:class_id (
             id,
             name,
+            description,
             grade_level,
-            description
+            created_at,
+            student_classes (count),
+            lessons (count)
           )
         `)
-        .eq('teacher_id', user?.id);
-      
+        .eq('teacher_id', user.id);
+
       if (error) throw error;
       return data;
     },
-    enabled: !!user?.id && user?.role === 'teacher',
+    enabled: !!user?.id,
   });
 
-  // Fetch student count for each class
-  const { data: studentCounts } = useQuery({
-    queryKey: ['class-student-counts'],
-    queryFn: async () => {
-      if (!teacherClasses?.length) return {};
-      
-      const classIds = teacherClasses.map(tc => tc.class_id);
-      const { data, error } = await supabase
-        .from('student_classes')
-        .select('class_id')
-        .in('class_id', classIds);
-      
-      if (error) throw error;
-      
-      // Count students per class
-      const counts: Record<string, number> = {};
-      data.forEach(sc => {
-        counts[sc.class_id] = (counts[sc.class_id] || 0) + 1;
-      });
-      
-      return counts;
-    },
-    enabled: !!teacherClasses?.length,
-  });
-
-  if (user?.role !== 'teacher') {
-    return <div>Access denied</div>;
+  if (isLoading) {
+    return (
+      <div className="container mx-auto p-6">
+        <div className="text-center">Loading your classes...</div>
+      </div>
+    );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4 md:p-6">
-      <div className="max-w-7xl mx-auto space-y-6">
-        {/* Header */}
-        <div className="flex justify-between items-center">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">My Classes</h1>
-            <p className="text-gray-600">Manage your assigned classes and students</p>
-          </div>
-        </div>
+    <div className="container mx-auto p-6">
+      <div className="mb-6">
+        <h1 className="text-3xl font-bold text-gray-900">My Classes</h1>
+        <p className="text-gray-600 mt-2">Manage your assigned classes and track student progress</p>
+      </div>
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center">
-                <Book className="h-8 w-8 text-blue-600" />
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Total Classes</p>
-                  <p className="text-2xl font-bold">{teacherClasses?.length || 0}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center">
-                <Users className="h-8 w-8 text-green-600" />
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Total Students</p>
-                  <p className="text-2xl font-bold">
-                    {studentCounts ? Object.values(studentCounts).reduce((a, b) => a + b, 0) : 0}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center">
-                <Calendar className="h-8 w-8 text-purple-600" />
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Active Classes</p>
-                  <p className="text-2xl font-bold">{teacherClasses?.length || 0}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Classes Table */}
+      {assignedClasses.length === 0 ? (
         <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <Book className="mr-2 h-5 w-5" />
-              Your Assigned Classes
-            </CardTitle>
-            <CardDescription>
-              Classes you are currently teaching
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {isLoading ? (
-              <div className="text-center py-8">Loading...</div>
-            ) : teacherClasses?.length === 0 ? (
-              <div className="text-center py-8">
-                <p className="text-gray-500">No classes assigned yet</p>
-              </div>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Class Name</TableHead>
-                    <TableHead>Grade Level</TableHead>
-                    <TableHead>Students</TableHead>
-                    <TableHead>Description</TableHead>
-                    <TableHead>Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {teacherClasses?.map((teacherClass) => (
-                    <TableRow key={teacherClass.id}>
-                      <TableCell>
-                        <div className="font-medium">{teacherClass.classes?.name}</div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline">{teacherClass.classes?.grade_level}</Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center">
-                          <Users className="h-4 w-4 mr-1 text-gray-400" />
-                          {studentCounts?.[teacherClass.class_id] || 0}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="text-sm text-gray-600">
-                          {teacherClass.classes?.description || 'No description'}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex space-x-2">
-                          <Button variant="outline" size="sm" asChild>
-                            <Link to={`/lessons?class=${teacherClass.class_id}`}>
-                              <Eye className="h-4 w-4 mr-1" />
-                              View Lessons
-                            </Link>
-                          </Button>
-                          <Button variant="outline" size="sm" asChild>
-                            <Link to={`/assignments?class=${teacherClass.class_id}`}>
-                              <Plus className="h-4 w-4 mr-1" />
-                              Add Assignment
-                            </Link>
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
+          <CardContent className="text-center py-12">
+            <BookOpen className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 mb-2">No Classes Assigned</h3>
+            <p className="text-gray-600">You haven't been assigned to any classes yet.</p>
           </CardContent>
         </Card>
-      </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {assignedClasses.map((assignment: any) => (
+            <Card key={assignment.id} className="hover:shadow-lg transition-shadow">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <BookOpen className="h-5 w-5" />
+                  {assignment.classes.name}
+                </CardTitle>
+                {assignment.classes.grade_level && (
+                  <Badge variant="secondary">{assignment.classes.grade_level}</Badge>
+                )}
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {assignment.classes.description && (
+                  <p className="text-gray-600 text-sm">{assignment.classes.description}</p>
+                )}
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="flex items-center gap-2 text-sm text-gray-500">
+                    <Users className="h-4 w-4" />
+                    <span>{assignment.classes.student_classes?.[0]?.count || 0} students</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-sm text-gray-500">
+                    <GraduationCap className="h-4 w-4" />
+                    <span>{assignment.classes.lessons?.[0]?.count || 0} lessons</span>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Button 
+                    className="w-full"
+                    onClick={() => navigate(`/lessons?class=${assignment.classes.id}`)}
+                  >
+                    <GraduationCap className="h-4 w-4 mr-2" />
+                    Manage Lessons
+                  </Button>
+                  <Button 
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => navigate(`/assignments?class=${assignment.classes.id}`)}
+                  >
+                    <FileText className="h-4 w-4 mr-2" />
+                    Manage Assignments
+                  </Button>
+                </div>
+
+                <div className="pt-4 border-t">
+                  <p className="text-xs text-gray-500">
+                    Assigned on {new Date(assignment.assigned_at).toLocaleDateString()}
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
     </div>
   );
 };

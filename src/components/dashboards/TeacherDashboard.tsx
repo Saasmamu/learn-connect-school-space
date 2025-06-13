@@ -1,342 +1,221 @@
+
 import React from 'react';
-import { Link } from 'react-router-dom';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import {
-  Book,
-  Calendar,
-  Users,
-  FileText,
-  MessageSquare,
-  Upload,
-  Clock,
-  CheckCircle,
-  AlertCircle,
-  TrendingUp,
-  Video,
-  Play
-} from 'lucide-react';
+import { BookOpen, Users, Bell, GraduationCap, FileText } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { NotificationsList } from '@/components/notifications/NotificationsList';
 
 export const TeacherDashboard: React.FC = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
 
-  const myClasses = [
-    { name: 'Class 10A - Quran Studies', students: 25, time: '10:00 AM', room: 'Virtual Room 1' },
-    { name: 'Class 9B - Arabic Grammar', students: 30, time: '2:00 PM', room: 'Virtual Room 3' },
-    { name: 'Class 11A - Islamic History', students: 22, time: '4:00 PM', room: 'Virtual Room 2' },
-  ];
+  // Fetch teacher's assigned classes
+  const { data: assignedClasses = [] } = useQuery({
+    queryKey: ['teacher-classes', user?.id],
+    queryFn: async () => {
+      if (!user?.id) return [];
+      
+      const { data, error } = await supabase
+        .from('teacher_classes')
+        .select(`
+          *,
+          classes:class_id (
+            id,
+            name,
+            description,
+            grade_level
+          )
+        `)
+        .eq('teacher_id', user.id);
 
-  const pendingTasks = [
-    { title: 'Grade Quran Recitation Assignments', count: 15, priority: 'high' },
-    { title: 'Upload Week 5 Lesson Materials', count: 1, priority: 'medium' },
-    { title: 'Review Student Progress Reports', count: 8, priority: 'low' },
-    { title: 'Prepare Midterm Exam Questions', count: 1, priority: 'high' },
-  ];
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!user?.id,
+  });
 
-  const recentActivity = [
-    { student: 'Ahmad Ali', action: 'Submitted Assignment', subject: 'Quran Studies', time: '2 hours ago' },
-    { student: 'Fatima Hassan', action: 'Attended Virtual Class', subject: 'Arabic Grammar', time: '4 hours ago' },
-    { student: 'Omar Ibrahim', action: 'Downloaded Materials', subject: 'Islamic History', time: '6 hours ago' },
-  ];
+  // Fetch students count for teacher's classes
+  const { data: studentsCount } = useQuery({
+    queryKey: ['teacher-students-count', user?.id],
+    queryFn: async () => {
+      if (!user?.id || assignedClasses.length === 0) return 0;
+      
+      const classIds = assignedClasses.map(tc => tc.class_id);
+      const { count, error } = await supabase
+        .from('student_classes')
+        .select('id', { count: 'exact' })
+        .in('class_id', classIds);
 
-  const classPerformance = [
-    { subject: 'Quran Studies', avgGrade: 'A-', completion: 92 },
-    { subject: 'Arabic Grammar', avgGrade: 'B+', completion: 85 },
-    { subject: 'Islamic History', avgGrade: 'A', completion: 88 },
-  ];
+      if (error) throw error;
+      return count || 0;
+    },
+    enabled: !!user?.id && assignedClasses.length > 0,
+  });
+
+  // Fetch lessons count
+  const { data: lessonsCount } = useQuery({
+    queryKey: ['teacher-lessons-count', user?.id],
+    queryFn: async () => {
+      if (!user?.id || assignedClasses.length === 0) return 0;
+      
+      const classIds = assignedClasses.map(tc => tc.class_id);
+      const { count, error } = await supabase
+        .from('lessons')
+        .select('id', { count: 'exact' })
+        .in('class_id', classIds);
+
+      if (error) throw error;
+      return count || 0;
+    },
+    enabled: !!user?.id && assignedClasses.length > 0,
+  });
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4 md:p-6">
-      <div className="max-w-7xl mx-auto space-y-6">
-        {/* Header */}
-        <div className="bg-gradient-to-r from-blue-600 to-blue-700 rounded-lg p-6 text-white">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold mb-2">
-                Assalamu Alaikum, Ustaz {user?.name}!
-              </h1>
-              <p className="text-blue-100">
-                Ready to inspire and educate your students today?
-              </p>
-              <div className="flex items-center mt-4 space-x-4">
-                <Badge variant="secondary" className="bg-blue-500 text-white">
-                  {user?.subjects?.join(', ')}
-                </Badge>
-                <div className="flex items-center text-blue-100">
-                  <Users className="h-4 w-4 mr-1" />
-                  <span className="text-sm">77 Students</span>
-                </div>
-              </div>
-            </div>
-            <Avatar className="h-16 w-16 border-4 border-blue-400">
-              <AvatarFallback className="bg-blue-200 text-blue-800 text-lg">
-                {user?.name.charAt(0).toUpperCase()}
-              </AvatarFallback>
-            </Avatar>
-          </div>
+    <div className="min-h-screen bg-gray-50">
+      <div className="container mx-auto p-6">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-gray-900">
+            Welcome, {user?.name}!
+          </h1>
+          <p className="text-gray-600 mt-2">Manage your classes and track student progress</p>
         </div>
 
         {/* Quick Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center">
-                <Users className="h-8 w-8 text-blue-600" />
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Total Students</p>
-                  <p className="text-2xl font-bold">77</p>
-                </div>
-              </div>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">My Classes</CardTitle>
+              <BookOpen className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{assignedClasses.length}</div>
             </CardContent>
           </Card>
+
           <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center">
-                <Book className="h-8 w-8 text-green-600" />
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Active Courses</p>
-                  <p className="text-2xl font-bold">3</p>
-                </div>
-              </div>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total Students</CardTitle>
+              <Users className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{studentsCount || 0}</div>
             </CardContent>
           </Card>
+
           <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center">
-                <FileText className="h-8 w-8 text-orange-600" />
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Pending Reviews</p>
-                  <p className="text-2xl font-bold">24</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center">
-                <TrendingUp className="h-8 w-8 text-purple-600" />
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Avg Class Grade</p>
-                  <p className="text-2xl font-bold">A-</p>
-                </div>
-              </div>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total Lessons</CardTitle>
+              <GraduationCap className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{lessonsCount || 0}</div>
             </CardContent>
           </Card>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Main Content */}
-          <div className="lg:col-span-2 space-y-6">
-            {/* Today's Classes */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center">
-                  <Calendar className="mr-2 h-5 w-5" />
-                  Today's Classes
-                </CardTitle>
-                <CardDescription>Your teaching schedule for today</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {myClasses.map((class_, index) => (
-                    <div key={index} className="flex items-center justify-between p-4 border rounded-lg">
-                      <div className="flex items-center space-x-4">
-                        <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-                          <Users className="h-6 w-6 text-blue-600" />
-                        </div>
-                        <div>
-                          <h3 className="font-semibold">{class_.name}</h3>
-                          <p className="text-sm text-gray-600">{class_.students} students • {class_.room}</p>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <p className="font-semibold text-blue-600">{class_.time}</p>
-                        <div className="flex space-x-2 mt-2">
-                          <Button size="sm" variant="outline">
-                            <Video className="h-4 w-4 mr-1" />
-                            Start Class
-                          </Button>
-                          <Button size="sm" variant="ghost">
-                            Materials
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
+        {/* Quick Actions */}
+        <Card className="mb-8">
+          <CardHeader>
+            <CardTitle>Quick Actions</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <Button onClick={() => navigate('/teacher/classes')} className="h-20 flex-col">
+                <BookOpen className="h-6 w-6 mb-2" />
+                My Classes
+              </Button>
+              <Button onClick={() => navigate('/lessons')} className="h-20 flex-col">
+                <GraduationCap className="h-6 w-6 mb-2" />
+                Lessons
+              </Button>
+              <Button onClick={() => navigate('/assignments')} className="h-20 flex-col">
+                <FileText className="h-6 w-6 mb-2" />
+                Assignments
+              </Button>
+              <Button onClick={() => navigate('/notifications')} className="h-20 flex-col">
+                <Bell className="h-6 w-6 mb-2" />
+                Notifications
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
 
-            {/* Class Performance */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* My Classes */}
+          <div className="lg:col-span-2">
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center">
-                  <TrendingUp className="mr-2 h-5 w-5" />
-                  Class Performance Overview
-                </CardTitle>
-                <CardDescription>Monitor your students' progress</CardDescription>
+                <CardTitle>My Classes</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="space-y-6">
-                  {classPerformance.map((performance, index) => (
-                    <div key={index} className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <h3 className="font-semibold">{performance.subject}</h3>
-                        <div className="flex items-center space-x-4">
-                          <span className="text-sm text-gray-600">Avg Grade: {performance.avgGrade}</span>
-                          <Badge variant="secondary">{performance.completion}% Completion</Badge>
-                        </div>
-                      </div>
-                      <div className="w-full bg-gray-200 rounded-full h-2">
-                        <div 
-                          className="bg-blue-600 h-2 rounded-full" 
-                          style={{ width: `${performance.completion}%` }}
-                        ></div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Recent Student Activity */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center">
-                  <Clock className="mr-2 h-5 w-5" />
-                  Recent Student Activity
-                </CardTitle>
-                <CardDescription>Latest actions from your students</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {recentActivity.map((activity, index) => (
-                    <div key={index} className="flex items-center space-x-4 p-3 border-l-4 border-blue-200">
-                      <Avatar className="h-8 w-8">
-                        <AvatarFallback className="bg-blue-100 text-blue-700">
-                          {activity.student.split(' ').map(n => n[0]).join('')}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="flex-1">
-                        <p className="text-sm font-medium">{activity.student}</p>
-                        <p className="text-xs text-gray-600">{activity.action} - {activity.subject}</p>
-                      </div>
-                      <span className="text-xs text-gray-500">{activity.time}</span>
-                    </div>
-                  ))}
-                </div>
+                {assignedClasses.length === 0 ? (
+                  <div className="text-center py-8">
+                    <BookOpen className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                    <h3 className="text-lg font-medium text-gray-900 mb-2">No Classes Assigned</h3>
+                    <p className="text-gray-600">You haven't been assigned to any classes yet.</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {assignedClasses.map((assignment: any) => (
+                      <Card key={assignment.id} className="hover:shadow-md transition-shadow">
+                        <CardHeader className="pb-3">
+                          <CardTitle className="text-lg">{assignment.classes.name}</CardTitle>
+                          {assignment.classes.grade_level && (
+                            <Badge variant="secondary">{assignment.classes.grade_level}</Badge>
+                          )}
+                        </CardHeader>
+                        <CardContent className="space-y-2">
+                          {assignment.classes.description && (
+                            <p className="text-sm text-gray-600">{assignment.classes.description}</p>
+                          )}
+                          <div className="flex gap-2">
+                            <Button 
+                              size="sm"
+                              onClick={() => navigate(`/teacher/classes/${assignment.classes.id}`)}
+                            >
+                              Manage Class
+                            </Button>
+                            <Button 
+                              size="sm"
+                              variant="outline"
+                              onClick={() => navigate(`/lessons?class=${assignment.classes.id}`)}
+                            >
+                              View Lessons
+                            </Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
 
           {/* Sidebar */}
           <div className="space-y-6">
-            {/* Quick Actions */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Quick Actions</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                <Button className="w-full justify-start" variant="outline" asChild>
-                  <Link to="/lessons">
-                    <Upload className="mr-2 h-4 w-4" />
-                    Upload Lesson
-                  </Link>
-                </Button>
-                <Button className="w-full justify-start" variant="outline" asChild>
-                  <Link to="/assignments">
-                    <FileText className="mr-2 h-4 w-4" />
-                    Create Assignment
-                  </Link>
-                </Button>
-                <Button className="w-full justify-start" variant="outline" asChild>
-                  <Link to="/attendance">
-                    <CheckCircle className="mr-2 h-4 w-4" />
-                    Take Attendance
-                  </Link>
-                </Button>
-                <Button className="w-full justify-start" variant="outline" asChild>
-                  <Link to="/teacher/gradebook">
-                    <TrendingUp className="mr-2 h-4 w-4" />
-                    Grade Book
-                  </Link>
-                </Button>
-                <Button className="w-full justify-start" variant="outline" asChild>
-                  <Link to="/messaging">
-                    <MessageSquare className="mr-2 h-4 w-4" />
-                    Message Students
-                  </Link>
-                </Button>
-              </CardContent>
-            </Card>
+            <NotificationsList />
 
-            {/* Pending Tasks */}
+            {/* Class Overview */}
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center">
-                  <AlertCircle className="mr-2 h-5 w-5" />
-                  Pending Tasks
-                </CardTitle>
+                <CardTitle>Class Overview</CardTitle>
               </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {pendingTasks.map((task, index) => (
-                    <div key={index} className="border-l-4 border-orange-200 pl-4">
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <h4 className="font-semibold text-sm">{task.title}</h4>
-                          <p className="text-xs text-gray-600">{task.count} item(s)</p>
-                        </div>
-                        <Badge 
-                          variant={task.priority === 'high' ? 'destructive' : task.priority === 'medium' ? 'default' : 'secondary'}
-                          className="text-xs"
-                        >
-                          {task.priority}
-                        </Badge>
-                      </div>
+              <CardContent className="space-y-4">
+                {assignedClasses.slice(0, 3).map((assignment: any) => (
+                  <div key={assignment.id} className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium text-sm">{assignment.classes.name}</p>
+                      <p className="text-xs text-gray-600">{assignment.classes.grade_level}</p>
                     </div>
-                  ))}
-                </div>
-                <Button variant="ghost" className="w-full mt-4">
-                  View All Tasks
-                </Button>
-              </CardContent>
-            </Card>
-
-            {/* This Week's Schedule */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center">
-                  <Calendar className="mr-2 h-5 w-5" />
-                  This Week
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3 text-sm">
-                  <div className="flex justify-between">
-                    <span>Monday</span>
-                    <span className="text-blue-600">3 Classes</span>
+                    <Badge variant="outline">Active</Badge>
                   </div>
-                  <div className="flex justify-between">
-                    <span>Tuesday</span>
-                    <span className="text-blue-600">2 Classes</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Wednesday</span>
-                    <span className="text-blue-600">3 Classes</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Thursday</span>
-                    <span className="text-blue-600">2 Classes</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Friday</span>
-                    <span className="text-gray-500">No Classes</span>
-                  </div>
-                </div>
+                ))}
               </CardContent>
             </Card>
           </div>
