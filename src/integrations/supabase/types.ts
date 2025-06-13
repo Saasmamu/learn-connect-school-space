@@ -60,46 +60,159 @@ export type Database = {
           },
         ]
       }
+      assignment_answers: {
+        Row: {
+          answer_text: string | null
+          created_at: string
+          file_url: string | null
+          id: string
+          is_correct: boolean | null
+          points_earned: number | null
+          question_id: string | null
+          submission_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          answer_text?: string | null
+          created_at?: string
+          file_url?: string | null
+          id?: string
+          is_correct?: boolean | null
+          points_earned?: number | null
+          question_id?: string | null
+          submission_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          answer_text?: string | null
+          created_at?: string
+          file_url?: string | null
+          id?: string
+          is_correct?: boolean | null
+          points_earned?: number | null
+          question_id?: string | null
+          submission_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "assignment_answers_question_id_fkey"
+            columns: ["question_id"]
+            isOneToOne: false
+            referencedRelation: "assignment_questions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "assignment_answers_submission_id_fkey"
+            columns: ["submission_id"]
+            isOneToOne: false
+            referencedRelation: "submissions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      assignment_questions: {
+        Row: {
+          assignment_id: string | null
+          correct_answer: string | null
+          created_at: string
+          id: string
+          options: Json | null
+          points: number | null
+          question_order: number | null
+          question_text: string
+          question_type: string
+        }
+        Insert: {
+          assignment_id?: string | null
+          correct_answer?: string | null
+          created_at?: string
+          id?: string
+          options?: Json | null
+          points?: number | null
+          question_order?: number | null
+          question_text: string
+          question_type: string
+        }
+        Update: {
+          assignment_id?: string | null
+          correct_answer?: string | null
+          created_at?: string
+          id?: string
+          options?: Json | null
+          points?: number | null
+          question_order?: number | null
+          question_text?: string
+          question_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "assignment_questions_assignment_id_fkey"
+            columns: ["assignment_id"]
+            isOneToOne: false
+            referencedRelation: "assignments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       assignments: {
         Row: {
+          allow_resubmission: boolean | null
           assignment_type: string | null
           class_id: string | null
           created_at: string
           created_by: string | null
           description: string | null
           due_date: string | null
+          grading_mode: string | null
           id: string
           is_published: boolean | null
+          is_required: boolean | null
           lesson_id: string | null
           max_points: number | null
+          reference_materials: Json | null
+          scheduled_release: string | null
+          time_limit_minutes: number | null
           title: string
           updated_at: string
         }
         Insert: {
+          allow_resubmission?: boolean | null
           assignment_type?: string | null
           class_id?: string | null
           created_at?: string
           created_by?: string | null
           description?: string | null
           due_date?: string | null
+          grading_mode?: string | null
           id?: string
           is_published?: boolean | null
+          is_required?: boolean | null
           lesson_id?: string | null
           max_points?: number | null
+          reference_materials?: Json | null
+          scheduled_release?: string | null
+          time_limit_minutes?: number | null
           title: string
           updated_at?: string
         }
         Update: {
+          allow_resubmission?: boolean | null
           assignment_type?: string | null
           class_id?: string | null
           created_at?: string
           created_by?: string | null
           description?: string | null
           due_date?: string | null
+          grading_mode?: string | null
           id?: string
           is_published?: boolean | null
+          is_required?: boolean | null
           lesson_id?: string | null
           max_points?: number | null
+          reference_materials?: Json | null
+          scheduled_release?: string | null
+          time_limit_minutes?: number | null
           title?: string
           updated_at?: string
         }
@@ -319,33 +432,39 @@ export type Database = {
       grades: {
         Row: {
           assignment_id: string | null
+          auto_graded: boolean | null
           feedback: string | null
           graded_at: string
           graded_by: string | null
           id: string
           max_points: number | null
+          percentage: number | null
           points_earned: number | null
           student_id: string | null
           submission_id: string | null
         }
         Insert: {
           assignment_id?: string | null
+          auto_graded?: boolean | null
           feedback?: string | null
           graded_at?: string
           graded_by?: string | null
           id?: string
           max_points?: number | null
+          percentage?: number | null
           points_earned?: number | null
           student_id?: string | null
           submission_id?: string | null
         }
         Update: {
           assignment_id?: string | null
+          auto_graded?: boolean | null
           feedback?: string | null
           graded_at?: string
           graded_by?: string | null
           id?: string
           max_points?: number | null
+          percentage?: number | null
           points_earned?: number | null
           student_id?: string | null
           submission_id?: string | null
@@ -689,30 +808,42 @@ export type Database = {
       submissions: {
         Row: {
           assignment_id: string | null
+          attempt_number: number | null
           content: string | null
           file_url: string | null
           id: string
           is_late: boolean | null
+          started_at: string | null
+          status: string | null
           student_id: string | null
           submitted_at: string
+          time_spent_minutes: number | null
         }
         Insert: {
           assignment_id?: string | null
+          attempt_number?: number | null
           content?: string | null
           file_url?: string | null
           id?: string
           is_late?: boolean | null
+          started_at?: string | null
+          status?: string | null
           student_id?: string | null
           submitted_at?: string
+          time_spent_minutes?: number | null
         }
         Update: {
           assignment_id?: string | null
+          attempt_number?: number | null
           content?: string | null
           file_url?: string | null
           id?: string
           is_late?: boolean | null
+          started_at?: string | null
+          status?: string | null
           student_id?: string | null
           submitted_at?: string
+          time_spent_minutes?: number | null
         }
         Relationships: [
           {
@@ -772,6 +903,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      calculate_submission_grade: {
+        Args: { submission_uuid: string }
+        Returns: undefined
+      }
       get_user_role: {
         Args: { user_id: string }
         Returns: Database["public"]["Enums"]["user_role"]

@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -11,13 +12,17 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { FileText, Plus, Search, Edit, Calendar, Award, Users } from 'lucide-react';
+import { FileText, Plus, Search, Edit, Calendar, Award, Users, Play, Eye, BookOpen } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 import { Link } from 'react-router-dom';
+import { QuestionBuilder } from '@/components/assignments/QuestionBuilder';
+import { AssignmentSubmission } from '@/components/assignments/AssignmentSubmission';
+import { GradeView } from '@/components/assignments/GradeView';
 
 const formSchema = z.object({
   title: z.string().min(2, 'Title must be at least 2 characters'),
@@ -27,9 +32,23 @@ const formSchema = z.object({
   assignment_type: z.enum(['homework', 'quiz', 'project', 'exam']),
   max_points: z.number().min(1, 'Points must be at least 1'),
   due_date: z.string().optional(),
+  time_limit_minutes: z.number().optional(),
+  grading_mode: z.enum(['manual', 'auto']),
+  allow_resubmission: z.boolean(),
+  is_required: z.boolean(),
 });
 
 type FormData = z.infer<typeof formSchema>;
+
+interface Question {
+  id: string;
+  question_text: string;
+  question_type: 'mcq' | 'short_answer' | 'essay' | 'file_upload';
+  points: number;
+  options?: string[];
+  correct_answer?: string;
+  question_order: number;
+}
 
 export const AssignmentsPage: React.FC = () => {
   const { user } = useAuth();
@@ -40,6 +59,9 @@ export const AssignmentsPage: React.FC = () => {
   const [editingAssignment, setEditingAssignment] = useState<any>(null);
   const [selectedClass, setSelectedClass] = useState<string>('all');
   const [selectedType, setSelectedType] = useState<string>('all');
+  const [questions, setQuestions] = useState<Question[]>([]);
+  const [submissionDialog, setSubmissionDialog] = useState<string | null>(null);
+  const [gradeDialog, setGradeDialog] = useState<{ assignmentId: string; studentId: string } | null>(null);
 
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
@@ -51,6 +73,10 @@ export const AssignmentsPage: React.FC = () => {
       assignment_type: 'homework',
       max_points: 100,
       due_date: '',
+      time_limit_minutes: 0,
+      grading_mode: 'manual',
+      allow_resubmission: false,
+      is_required: true,
     },
   });
 
@@ -86,9 +112,9 @@ export const AssignmentsPage: React.FC = () => {
     enabled: !!user,
   });
 
-  // Fetch assignments
+  // Fetch assignments with grades for students
   const { data: assignments, isLoading } = useQuery({
-    queryKey: ['assignments', selectedClass, selectedType],
+    queryKey: ['assignments', selectedClass, selectedType, user?.role],
     queryFn: async () => {
       let query = supabase
         .from('assignments')
@@ -96,8 +122,7 @@ export const AssignmentsPage: React.FC = () => {
           *,
           classes(name),
           lessons(title),
-          profiles!assignments_created_by_fkey(full_name),
-          submissions(count)
+          profiles!assignments_created_by_fkey(full_name)
         `)
         .order('created_at', { ascending: false });
 
@@ -113,30 +138,35 @@ export const AssignmentsPage: React.FC = () => {
         query = query.eq('is_published', true);
       }
 
-      const { data, error } = await query;
+      const { data: assignmentData, error } = await query;
       if (error) throw error;
-      return data;
+
+      // For students, also fetch their grades and submissions
+      if (user?.role === 'student' && assignmentData) {
+        const assignmentIds = assignmentData.map(a => a.id);
+        
+        const { data: grades } = await supabase
+          .from('grades')
+          .select('assignment_id, points_earned, max_points, percentage')
+          .eq('student_id', user.id)
+          .in('assignment_id', assignmentIds);
+
+        const { data: submissions } = await supabase
+          .from('submissions')
+          .select('assignment_id, status, submitted_at')
+          .eq('student_id', user.id)
+          .in('assignment_id', assignmentIds);
+
+        return assignmentData.map(assignment => ({
+          ...assignment,
+          grade: grades?.find(g => g.assignment_id === assignment.id),
+          submission: submissions?.find(s => s.assignment_id === assignment.id),
+        }));
+      }
+
+      return assignmentData;
     },
     enabled: !!user,
-  });
-
-  // Fetch lessons for selected class
-  const { data: classLessons } = useQuery({
-    queryKey: ['class-lessons', form.watch('class_id')],
-    queryFn: async () => {
-      const classId = form.watch('class_id');
-      if (!classId) return [];
-      
-      const { data, error } = await supabase
-        .from('lessons')
-        .select('id, title')
-        .eq('class_id', classId)
-        .order('lesson_order');
-      
-      if (error) throw error;
-      return data;
-    },
-    enabled: !!form.watch('class_id'),
   });
 
   // Create/Update assignment mutation
@@ -150,8 +180,14 @@ export const AssignmentsPage: React.FC = () => {
         assignment_type: assignmentData.assignment_type,
         max_points: assignmentData.max_points,
         due_date: assignmentData.due_date ? new Date(assignmentData.due_date).toISOString() : null,
+        time_limit_minutes: assignmentData.time_limit_minutes || null,
+        grading_mode: assignmentData.grading_mode,
+        allow_resubmission: assignmentData.allow_resubmission,
+        is_required: assignmentData.is_required,
         created_by: user?.id,
       };
+
+      let assignmentId: string;
 
       if (editingAssignment) {
         const { error } = await supabase
@@ -159,11 +195,42 @@ export const AssignmentsPage: React.FC = () => {
           .update(saveData)
           .eq('id', editingAssignment.id);
         if (error) throw error;
+        assignmentId = editingAssignment.id;
       } else {
-        const { error } = await supabase
+        const { data, error } = await supabase
           .from('assignments')
-          .insert(saveData);
+          .insert(saveData)
+          .select()
+          .single();
         if (error) throw error;
+        assignmentId = data.id;
+      }
+
+      // Save questions
+      if (questions.length > 0) {
+        // Delete existing questions if editing
+        if (editingAssignment) {
+          await supabase
+            .from('assignment_questions')
+            .delete()
+            .eq('assignment_id', assignmentId);
+        }
+
+        const questionData = questions.map((q, index) => ({
+          assignment_id: assignmentId,
+          question_text: q.question_text,
+          question_type: q.question_type,
+          points: q.points,
+          options: q.options ? JSON.stringify(q.options) : null,
+          correct_answer: q.correct_answer || null,
+          question_order: index,
+        }));
+
+        const { error: questionsError } = await supabase
+          .from('assignment_questions')
+          .insert(questionData);
+
+        if (questionsError) throw questionsError;
       }
     },
     onSuccess: () => {
@@ -174,6 +241,7 @@ export const AssignmentsPage: React.FC = () => {
       });
       setIsDialogOpen(false);
       setEditingAssignment(null);
+      setQuestions([]);
       form.reset();
     },
     onError: (error) => {
@@ -204,7 +272,6 @@ export const AssignmentsPage: React.FC = () => {
   });
 
   const onSubmit = (values: FormData) => {
-    console.log('Form submission values:', values);
     saveAssignmentMutation.mutate(values);
   };
 
@@ -218,6 +285,10 @@ export const AssignmentsPage: React.FC = () => {
       assignment_type: assignment.assignment_type,
       max_points: assignment.max_points,
       due_date: assignment.due_date ? format(new Date(assignment.due_date), 'yyyy-MM-dd\'T\'HH:mm') : '',
+      time_limit_minutes: assignment.time_limit_minutes || 0,
+      grading_mode: assignment.grading_mode || 'manual',
+      allow_resubmission: assignment.allow_resubmission || false,
+      is_required: assignment.is_required ?? true,
     });
     setIsDialogOpen(true);
   };
@@ -239,6 +310,23 @@ export const AssignmentsPage: React.FC = () => {
     }
   };
 
+  const getStatusBadge = (assignment: any) => {
+    if (user?.role !== 'student') return null;
+    
+    if (assignment.submission) {
+      if (assignment.grade) {
+        return <Badge variant="default">Graded</Badge>;
+      }
+      return <Badge variant="secondary">Submitted</Badge>;
+    }
+    
+    if (assignment.due_date && new Date(assignment.due_date) < new Date()) {
+      return <Badge variant="destructive">Overdue</Badge>;
+    }
+    
+    return <Badge variant="outline">Pending</Badge>;
+  };
+
   if (classesLoading) {
     return (
       <div className="min-h-screen bg-gray-50 p-4 md:p-6">
@@ -257,7 +345,7 @@ export const AssignmentsPage: React.FC = () => {
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Assignment Management</h1>
             <p className="text-gray-600">
-              {user?.role === 'student' ? 'View and submit your assignments' : 'Create and manage assignments'}
+              {user?.role === 'student' ? 'View and complete your assignments' : 'Create and manage assignments'}
             </p>
           </div>
           {canManageAssignments && (
@@ -266,15 +354,8 @@ export const AssignmentsPage: React.FC = () => {
                 <Button 
                   onClick={() => { 
                     setEditingAssignment(null); 
-                    form.reset({
-                      title: '',
-                      description: '',
-                      class_id: '',
-                      lesson_id: 'none',
-                      assignment_type: 'homework',
-                      max_points: 100,
-                      due_date: '',
-                    }); 
+                    setQuestions([]);
+                    form.reset(); 
                   }}
                   disabled={!userClasses || userClasses.length === 0}
                 >
@@ -282,20 +363,18 @@ export const AssignmentsPage: React.FC = () => {
                   Add Assignment
                 </Button>
               </DialogTrigger>
-              <DialogContent className="sm:max-w-[600px]">
+              <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
-                  <DialogTitle>{editingAssignment ? 'Edit Assignment' : 'Add New Assignment'}</DialogTitle>
+                  <DialogTitle>{editingAssignment ? 'Edit Assignment' : 'Create New Assignment'}</DialogTitle>
                   <DialogDescription>
-                    {editingAssignment ? 'Update assignment information' : 'Create a new assignment for your class'}
+                    {editingAssignment ? 'Update assignment information' : 'Create a new assignment with questions'}
                   </DialogDescription>
                 </DialogHeader>
-                {(!userClasses || userClasses.length === 0) ? (
-                  <div className="p-4 text-center">
-                    <p className="text-gray-500">No classes available. Please contact an administrator to assign you to classes.</p>
-                  </div>
-                ) : (
-                  <Form {...form}>
-                    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                
+                <Form {...form}>
+                  <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                    {/* Basic Information */}
+                    <div className="grid grid-cols-2 gap-4">
                       <FormField
                         control={form.control}
                         name="class_id"
@@ -320,87 +399,102 @@ export const AssignmentsPage: React.FC = () => {
                           </FormItem>
                         )}
                       />
+                      
                       <FormField
                         control={form.control}
-                        name="title"
+                        name="assignment_type"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Assignment Title</FormLabel>
-                            <FormControl>
-                              <Input {...field} placeholder="e.g., Algebra Problem Set 1" />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <div className="grid grid-cols-2 gap-4">
-                        <FormField
-                          control={form.control}
-                          name="assignment_type"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Type</FormLabel>
-                              <Select onValueChange={field.onChange} defaultValue={field.value}>
-                                <FormControl>
-                                  <SelectTrigger>
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                </FormControl>
-                                <SelectContent>
-                                  <SelectItem value="homework">Homework</SelectItem>
-                                  <SelectItem value="quiz">Quiz</SelectItem>
-                                  <SelectItem value="project">Project</SelectItem>
-                                  <SelectItem value="exam">Exam</SelectItem>
-                                </SelectContent>
-                              </Select>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                        <FormField
-                          control={form.control}
-                          name="max_points"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Max Points</FormLabel>
-                              <FormControl>
-                                <Input 
-                                  type="number" 
-                                  {...field} 
-                                  onChange={(e) => field.onChange(parseInt(e.target.value))}
-                                  placeholder="100" 
-                                />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                      </div>
-                      <FormField
-                        control={form.control}
-                        name="lesson_id"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Related Lesson (Optional)</FormLabel>
+                            <FormLabel>Type</FormLabel>
                             <Select onValueChange={field.onChange} defaultValue={field.value}>
                               <FormControl>
                                 <SelectTrigger>
-                                  <SelectValue placeholder="Select a lesson" />
+                                  <SelectValue />
                                 </SelectTrigger>
                               </FormControl>
                               <SelectContent>
-                                <SelectItem value="none">No specific lesson</SelectItem>
-                                {classLessons?.map((lesson) => (
-                                  <SelectItem key={lesson.id} value={lesson.id}>
-                                    {lesson.title}
-                                  </SelectItem>
-                                ))}
+                                <SelectItem value="homework">Homework</SelectItem>
+                                <SelectItem value="quiz">Quiz</SelectItem>
+                                <SelectItem value="project">Project</SelectItem>
+                                <SelectItem value="exam">Exam</SelectItem>
                               </SelectContent>
                             </Select>
                             <FormMessage />
                           </FormItem>
                         )}
                       />
+                    </div>
+
+                    <FormField
+                      control={form.control}
+                      name="title"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Assignment Title</FormLabel>
+                          <FormControl>
+                            <Input {...field} placeholder="e.g., Algebra Problem Set 1" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="description"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Description</FormLabel>
+                          <FormControl>
+                            <Textarea {...field} rows={3} placeholder="Assignment instructions..." />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    {/* Settings */}
+                    <div className="grid grid-cols-2 gap-4">
+                      <FormField
+                        control={form.control}
+                        name="max_points"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Max Points</FormLabel>
+                            <FormControl>
+                              <Input 
+                                type="number" 
+                                {...field} 
+                                onChange={(e) => field.onChange(parseInt(e.target.value))}
+                                placeholder="100" 
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={form.control}
+                        name="time_limit_minutes"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Time Limit (minutes)</FormLabel>
+                            <FormControl>
+                              <Input 
+                                type="number" 
+                                {...field} 
+                                onChange={(e) => field.onChange(parseInt(e.target.value) || 0)}
+                                placeholder="0 for no limit" 
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
                       <FormField
                         control={form.control}
                         name="due_date"
@@ -414,47 +508,83 @@ export const AssignmentsPage: React.FC = () => {
                           </FormItem>
                         )}
                       />
+
                       <FormField
                         control={form.control}
-                        name="description"
+                        name="grading_mode"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Description</FormLabel>
-                            <FormControl>
-                              <Textarea {...field} rows={6} placeholder="Assignment instructions and requirements..." />
-                            </FormControl>
+                            <FormLabel>Grading Mode</FormLabel>
+                            <Select onValueChange={field.onChange} defaultValue={field.value}>
+                              <FormControl>
+                                <SelectTrigger>
+                                  <SelectValue />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                <SelectItem value="manual">Manual</SelectItem>
+                                <SelectItem value="auto">Auto (for MCQ)</SelectItem>
+                              </SelectContent>
+                            </Select>
                             <FormMessage />
                           </FormItem>
                         )}
                       />
-                      <DialogFooter>
-                        <Button type="submit" disabled={saveAssignmentMutation.isPending}>
-                          {editingAssignment ? 'Update' : 'Create'} Assignment
-                        </Button>
-                      </DialogFooter>
-                    </form>
-                  </Form>
-                )}
+                    </div>
+
+                    {/* Toggles */}
+                    <div className="grid grid-cols-2 gap-4">
+                      <FormField
+                        control={form.control}
+                        name="allow_resubmission"
+                        render={({ field }) => (
+                          <FormItem className="flex items-center justify-between rounded-lg border p-3">
+                            <div className="space-y-0.5">
+                              <FormLabel>Allow Resubmission</FormLabel>
+                            </div>
+                            <FormControl>
+                              <Switch
+                                checked={field.value}
+                                onCheckedChange={field.onChange}
+                              />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={form.control}
+                        name="is_required"
+                        render={({ field }) => (
+                          <FormItem className="flex items-center justify-between rounded-lg border p-3">
+                            <div className="space-y-0.5">
+                              <FormLabel>Required Submission</FormLabel>
+                            </div>
+                            <FormControl>
+                              <Switch
+                                checked={field.value}
+                                onCheckedChange={field.onChange}
+                              />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+
+                    {/* Questions Builder */}
+                    <QuestionBuilder questions={questions} onQuestionsChange={setQuestions} />
+
+                    <DialogFooter>
+                      <Button type="submit" disabled={saveAssignmentMutation.isPending}>
+                        {editingAssignment ? 'Update' : 'Create'} Assignment
+                      </Button>
+                    </DialogFooter>
+                  </form>
+                </Form>
               </DialogContent>
             </Dialog>
           )}
         </div>
-
-        {/* Show message if no classes for non-admin users */}
-        {canManageAssignments && (!userClasses || userClasses.length === 0) && (
-          <Card>
-            <CardContent className="p-6 text-center">
-              <p className="text-gray-500">
-                {user?.role === 'teacher' ? 'You are not assigned to any classes yet. Please contact an administrator.' : 'No classes created yet.'}
-              </p>
-              {user?.role === 'admin' && (
-                <Button asChild className="mt-4">
-                  <Link to="/admin/courses">Create Classes</Link>
-                </Button>
-              )}
-            </CardContent>
-          </Card>
-        )}
 
         {/* Filters */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -471,6 +601,7 @@ export const AssignmentsPage: React.FC = () => {
               </div>
             </CardContent>
           </Card>
+          
           <Card>
             <CardContent className="p-4">
               <Select value={selectedClass} onValueChange={setSelectedClass}>
@@ -488,6 +619,7 @@ export const AssignmentsPage: React.FC = () => {
               </Select>
             </CardContent>
           </Card>
+          
           <Card>
             <CardContent className="p-4">
               <Select value={selectedType} onValueChange={setSelectedType}>
@@ -504,6 +636,7 @@ export const AssignmentsPage: React.FC = () => {
               </Select>
             </CardContent>
           </Card>
+          
           <Card>
             <CardContent className="p-4">
               <div className="text-center">
@@ -540,8 +673,8 @@ export const AssignmentsPage: React.FC = () => {
                     <TableHead>Points</TableHead>
                     <TableHead>Due Date</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead>Submissions</TableHead>
-                    {canManageAssignments && <TableHead>Actions</TableHead>}
+                    {user?.role === 'student' && <TableHead>Grade</TableHead>}
+                    <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -578,19 +711,39 @@ export const AssignmentsPage: React.FC = () => {
                         )}
                       </TableCell>
                       <TableCell>
-                        <Badge variant={assignment.is_published ? "default" : "secondary"}>
-                          {assignment.is_published ? "Published" : "Draft"}
-                        </Badge>
+                        {getStatusBadge(assignment) || (
+                          <Badge variant={assignment.is_published ? "default" : "secondary"}>
+                            {assignment.is_published ? "Published" : "Draft"}
+                          </Badge>
+                        )}
                       </TableCell>
-                      <TableCell>
-                        <div className="flex items-center">
-                          <Users className="h-4 w-4 mr-1 text-blue-500" />
-                          {assignment.submissions?.length || 0}
-                        </div>
-                      </TableCell>
-                      {canManageAssignments && (
+                      {user?.role === 'student' && (
                         <TableCell>
-                          <div className="flex space-x-2">
+                          {assignment.grade ? (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setGradeDialog({ assignmentId: assignment.id, studentId: user.id })}
+                            >
+                              {assignment.grade.percentage?.toFixed(1)}%
+                            </Button>
+                          ) : (
+                            <span className="text-gray-400">-</span>
+                          )}
+                        </TableCell>
+                      )}
+                      <TableCell>
+                        <div className="flex space-x-2">
+                          {user?.role === 'student' && !assignment.submission && (
+                            <Button
+                              size="sm"
+                              onClick={() => setSubmissionDialog(assignment.id)}
+                            >
+                              <Play className="h-4 w-4 mr-1" />
+                              Take
+                            </Button>
+                          )}
+                          {canManageAssignments && (
                             <Button
                               variant="ghost"
                               size="sm"
@@ -598,19 +751,9 @@ export const AssignmentsPage: React.FC = () => {
                             >
                               <Edit className="h-4 w-4" />
                             </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => togglePublishMutation.mutate({
-                                assignmentId: assignment.id,
-                                isPublished: assignment.is_published
-                              })}
-                            >
-                              {assignment.is_published ? "Unpublish" : "Publish"}
-                            </Button>
-                          </div>
-                        </TableCell>
-                      )}
+                          )}
+                        </div>
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -618,6 +761,30 @@ export const AssignmentsPage: React.FC = () => {
             )}
           </CardContent>
         </Card>
+
+        {/* Assignment Submission Dialog */}
+        {submissionDialog && (
+          <Dialog open={true} onOpenChange={() => setSubmissionDialog(null)}>
+            <DialogContent className="sm:max-w-[900px] max-h-[90vh] overflow-y-auto">
+              <AssignmentSubmission 
+                assignmentId={submissionDialog} 
+                onClose={() => setSubmissionDialog(null)}
+              />
+            </DialogContent>
+          </Dialog>
+        )}
+
+        {/* Grade View Dialog */}
+        {gradeDialog && (
+          <Dialog open={true} onOpenChange={() => setGradeDialog(null)}>
+            <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto">
+              <GradeView 
+                assignmentId={gradeDialog.assignmentId}
+                studentId={gradeDialog.studentId}
+              />
+            </DialogContent>
+          </Dialog>
+        )}
       </div>
     </div>
   );
