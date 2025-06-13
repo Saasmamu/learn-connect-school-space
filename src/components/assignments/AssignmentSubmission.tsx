@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -51,6 +50,20 @@ export const AssignmentSubmission: React.FC<AssignmentSubmissionProps> = ({
         .single();
 
       if (error) throw error;
+      
+      // Process the assignment questions to ensure options is properly parsed
+      if (data?.assignment_questions) {
+        data.assignment_questions = data.assignment_questions.map(question => ({
+          ...question,
+          options: question.options ? 
+            (typeof question.options === 'string' ? 
+              JSON.parse(question.options) : 
+              question.options
+            ) : 
+            []
+        }));
+      }
+      
       return data;
     },
   });
@@ -241,7 +254,7 @@ export const AssignmentSubmission: React.FC<AssignmentSubmissionProps> = ({
 
             {question.question_type === 'mcq' && (
               <div className="space-y-2">
-                {(question.options as string[])?.map((option, optionIndex) => (
+                {Array.isArray(question.options) && question.options.map((option, optionIndex) => (
                   <label key={optionIndex} className="flex items-center gap-2 cursor-pointer">
                     <input
                       type="radio"
