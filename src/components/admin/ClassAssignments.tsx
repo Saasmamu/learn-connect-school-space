@@ -9,6 +9,39 @@ import { Badge } from '@/components/ui/badge';
 import { Users, UserPlus, GraduationCap, Trash2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
+interface StudentAssignment {
+  id: string;
+  student_id: string;
+  class_id: string;
+  enrolled_at: string;
+  profiles: {
+    full_name: string;
+    email: string;
+  };
+  classes: {
+    name: string;
+  };
+}
+
+interface TeacherAssignment {
+  id: string;
+  teacher_id: string;
+  class_id: string;
+  assigned_at: string;
+  profiles: {
+    full_name: string;
+    email: string;
+  };
+  classes: {
+    name: string;
+  };
+}
+
+interface ClassAssignmentsData {
+  students: StudentAssignment[];
+  teachers: TeacherAssignment[];
+}
+
 export const ClassAssignments: React.FC = () => {
   const [selectedClass, setSelectedClass] = useState<string>('');
   const [selectedStudent, setSelectedStudent] = useState<string>('');
@@ -57,8 +90,8 @@ export const ClassAssignments: React.FC = () => {
     },
   });
 
-  // Fetch class assignments
-  const { data: classAssignments = [] } = useQuery({
+  // Fetch class assignments with proper typing
+  const { data: classAssignments = { students: [], teachers: [] } } = useQuery<ClassAssignmentsData>({
     queryKey: ['class-assignments'],
     queryFn: async () => {
       const { data: studentAssignments, error: studentError } = await supabase
@@ -266,7 +299,7 @@ export const ClassAssignments: React.FC = () => {
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
-              {classAssignments.students.map((assignment: any) => (
+              {classAssignments.students.map((assignment) => (
                 <div key={assignment.id} className="flex items-center justify-between p-2 border rounded">
                   <div>
                     <div className="font-medium">{assignment.profiles?.full_name}</div>
@@ -295,7 +328,7 @@ export const ClassAssignments: React.FC = () => {
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
-              {classAssignments.teachers.map((assignment: any) => (
+              {classAssignments.teachers.map((assignment) => (
                 <div key={assignment.id} className="flex items-center justify-between p-2 border rounded">
                   <div>
                     <div className="font-medium">{assignment.profiles?.full_name}</div>
