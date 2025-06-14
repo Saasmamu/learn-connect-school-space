@@ -1,3 +1,4 @@
+
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -21,6 +22,8 @@ import { ProfilePage } from "./pages/ProfilePage";
 import { ScholarsPage } from "./pages/ScholarsPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { VideoLibraryPage } from "./pages/VideoLibraryPage";
+import { CoursesPage as AdminCoursesPage } from "./pages/admin/CoursesPage";
+import { CourseCreationPage } from "./pages/admin/CourseCreationPage";
 
 const queryClient = new QueryClient();
 
@@ -50,6 +53,8 @@ function App() {
                 <Route path="/scholars" element={<ScholarsPage />} />
                 <Route path="/settings" element={<SettingsPage />} />
                 <Route path="/video-library" element={<VideoLibraryPage />} />
+                <Route path="/admin/courses" element={<AdminCoursesPage />} />
+                <Route path="/admin/courses/create" element={<CourseCreationPage />} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </div>
