@@ -12,6 +12,7 @@ import { CourseLessons } from '@/components/course-creation/CourseLessons';
 import { CourseSettings } from '@/components/course-creation/CourseSettings';
 import { CoursePreview } from '@/components/course-creation/CoursePreview';
 import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
 
 export interface CourseData {
   name: string;
@@ -72,11 +73,67 @@ export const CourseCreationPage: React.FC = () => {
     }
   };
 
-  const handleSaveDraft = () => {
-    toast({
-      title: "Draft Saved",
-      description: "Your course draft has been saved successfully.",
-    });
+  const handleSaveDraft = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('courses')
+        .insert({
+          title: courseData.name,
+          description: courseData.description,
+          level: courseData.grade_level,
+          instructor_id: user?.id,
+          is_published: false,
+          is_public: false,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      toast({
+        title: "Draft Saved",
+        description: "Your course draft has been saved successfully.",
+      });
+    } catch (error) {
+      console.error('Error saving draft:', error);
+      toast({
+        title: "Error",
+        description: "Failed to save course draft.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handlePublishCourse = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('courses')
+        .insert({
+          title: courseData.name,
+          description: courseData.description,
+          level: courseData.grade_level,
+          instructor_id: user?.id,
+          is_published: courseData.settings.is_published,
+          is_public: true,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      toast({
+        title: "Course Published",
+        description: "Your course has been published successfully!",
+      });
+      navigate('/my-courses');
+    } catch (error) {
+      console.error('Error publishing course:', error);
+      toast({
+        title: "Error",
+        description: "Failed to publish course.",
+        variant: "destructive",
+      });
+    }
   };
 
   const canProceedToNext = () => {
@@ -94,8 +151,16 @@ export const CourseCreationPage: React.FC = () => {
 
   const progress = (currentStep / steps.length) * 100;
 
-  if (user?.role !== 'admin') {
-    return <div>Access denied</div>;
+  // Allow both admins and teachers to create courses
+  if (!user || (user.role !== 'admin' && user.role !== 'teacher')) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Access Denied</h2>
+          <p className="text-gray-600">You need to be a teacher or admin to create courses.</p>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -104,9 +169,9 @@ export const CourseCreationPage: React.FC = () => {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
-            <Button variant="ghost" onClick={() => navigate('/admin/courses')}>
+            <Button variant="ghost" onClick={() => navigate('/my-courses')}>
               <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to Courses
+              Back to My Courses
             </Button>
             <div>
               <h1 className="text-3xl font-bold text-gray-900">Create New Course</h1>
@@ -213,13 +278,7 @@ export const CourseCreationPage: React.FC = () => {
               </Button>
             ) : (
               <Button
-                onClick={() => {
-                  toast({
-                    title: "Course Published",
-                    description: "Your course has been published successfully!",
-                  });
-                  navigate('/admin/courses');
-                }}
+                onClick={handlePublishCourse}
                 className="bg-green-600 hover:bg-green-700"
               >
                 <Eye className="h-4 w-4 mr-2" />
