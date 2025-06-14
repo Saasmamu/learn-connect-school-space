@@ -21,6 +21,7 @@ export const Navigation: React.FC = () => {
   const publicNavItems = [
     { name: 'Home', href: '/' },
     { name: 'About', href: '/about' },
+    { name: 'Scholars', href: '/scholars' },
     { name: 'Admissions', href: '/admissions' },
     { name: 'Login', href: '/login' },
   ];
@@ -32,6 +33,7 @@ export const Navigation: React.FC = () => {
       { name: 'Dashboard', href: '/dashboard' },
       { name: 'Courses', href: '/courses' },
       { name: 'Lessons', href: '/lessons' },
+      { name: 'Scholars', href: '/scholars' },
     ];
 
     switch (user.role) {
