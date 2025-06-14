@@ -10,7 +10,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
 export const SettingsPage: React.FC = () => {
-  const { user } = useAuth();
+  const { user, session } = useAuth();
   const { toast } = useToast();
   const [notifications, setNotifications] = useState({
     email: true,
@@ -100,12 +100,14 @@ export const SettingsPage: React.FC = () => {
             <label className="text-sm font-medium">User ID</label>
             <p className="text-sm text-muted-foreground font-mono">{user.id}</p>
           </div>
-          <div>
-            <label className="text-sm font-medium">Account Created</label>
-            <p className="text-sm text-muted-foreground">
-              {new Date(user.created_at).toLocaleDateString()}
-            </p>
-          </div>
+          {session?.user && (
+            <div>
+              <label className="text-sm font-medium">Account Created</label>
+              <p className="text-sm text-muted-foreground">
+                {new Date(session.user.created_at).toLocaleDateString()}
+              </p>
+            </div>
+          )}
         </CardContent>
       </Card>
 

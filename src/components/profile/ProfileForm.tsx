@@ -89,6 +89,15 @@ export const ProfileForm: React.FC<ProfileFormProps> = ({ onSuccess }) => {
     }
 
     if (data) {
+      // Safely parse social_media_links with proper type checking
+      const socialLinks = data.social_media_links as Record<string, any> || {};
+      const parsedSocialLinks = {
+        facebook: typeof socialLinks.facebook === 'string' ? socialLinks.facebook : '',
+        instagram: typeof socialLinks.instagram === 'string' ? socialLinks.instagram : '',
+        twitter: typeof socialLinks.twitter === 'string' ? socialLinks.twitter : '',
+        linkedin: typeof socialLinks.linkedin === 'string' ? socialLinks.linkedin : '',
+      };
+
       reset({
         full_name: data.full_name || '',
         email: data.email || '',
@@ -100,12 +109,7 @@ export const ProfileForm: React.FC<ProfileFormProps> = ({ onSuccess }) => {
         years_experience: data.years_experience || undefined,
         is_featured: data.is_featured || false,
         specializations: data.specializations || [],
-        social_media_links: data.social_media_links || {
-          facebook: '',
-          instagram: '',
-          twitter: '',
-          linkedin: '',
-        },
+        social_media_links: parsedSocialLinks,
       });
       
       if (data.avatar_url) {
