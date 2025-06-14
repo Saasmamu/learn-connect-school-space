@@ -543,6 +543,7 @@ export type Database = {
           lesson_order: number | null
           title: string
           updated_at: string
+          video_content_id: string | null
           video_url: string | null
         }
         Insert: {
@@ -557,6 +558,7 @@ export type Database = {
           lesson_order?: number | null
           title: string
           updated_at?: string
+          video_content_id?: string | null
           video_url?: string | null
         }
         Update: {
@@ -571,6 +573,7 @@ export type Database = {
           lesson_order?: number | null
           title?: string
           updated_at?: string
+          video_content_id?: string | null
           video_url?: string | null
         }
         Relationships: [
@@ -586,6 +589,13 @@ export type Database = {
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lessons_video_content_id_fkey"
+            columns: ["video_content_id"]
+            isOneToOne: false
+            referencedRelation: "video_content"
             referencedColumns: ["id"]
           },
         ]
@@ -916,6 +926,209 @@ export type Database = {
           },
         ]
       }
+      video_content: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          duration_seconds: number | null
+          file_size_bytes: number | null
+          id: string
+          thumbnail_url: string | null
+          title: string
+          updated_at: string | null
+          upload_status: string | null
+          uploaded_by: string
+          video_quality: string | null
+          video_url: string
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          duration_seconds?: number | null
+          file_size_bytes?: number | null
+          id?: string
+          thumbnail_url?: string | null
+          title: string
+          updated_at?: string | null
+          upload_status?: string | null
+          uploaded_by: string
+          video_quality?: string | null
+          video_url: string
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          duration_seconds?: number | null
+          file_size_bytes?: number | null
+          id?: string
+          thumbnail_url?: string | null
+          title?: string
+          updated_at?: string | null
+          upload_status?: string | null
+          uploaded_by?: string
+          video_quality?: string | null
+          video_url?: string
+        }
+        Relationships: []
+      }
+      video_playlist_items: {
+        Row: {
+          added_at: string | null
+          id: string
+          playlist_id: string | null
+          sort_order: number
+          video_content_id: string | null
+        }
+        Insert: {
+          added_at?: string | null
+          id?: string
+          playlist_id?: string | null
+          sort_order?: number
+          video_content_id?: string | null
+        }
+        Update: {
+          added_at?: string | null
+          id?: string
+          playlist_id?: string | null
+          sort_order?: number
+          video_content_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "video_playlist_items_playlist_id_fkey"
+            columns: ["playlist_id"]
+            isOneToOne: false
+            referencedRelation: "video_playlists"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "video_playlist_items_video_content_id_fkey"
+            columns: ["video_content_id"]
+            isOneToOne: false
+            referencedRelation: "video_content"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      video_playlists: {
+        Row: {
+          created_at: string | null
+          created_by: string
+          description: string | null
+          id: string
+          is_public: boolean | null
+          name: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_by: string
+          description?: string | null
+          id?: string
+          is_public?: boolean | null
+          name: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string
+          description?: string | null
+          id?: string
+          is_public?: boolean | null
+          name?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      video_processing_jobs: {
+        Row: {
+          completed_at: string | null
+          created_at: string | null
+          error_message: string | null
+          id: string
+          processing_status: string | null
+          progress_percentage: number | null
+          started_at: string | null
+          video_content_id: string | null
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string | null
+          error_message?: string | null
+          id?: string
+          processing_status?: string | null
+          progress_percentage?: number | null
+          started_at?: string | null
+          video_content_id?: string | null
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string | null
+          error_message?: string | null
+          id?: string
+          processing_status?: string | null
+          progress_percentage?: number | null
+          started_at?: string | null
+          video_content_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "video_processing_jobs_video_content_id_fkey"
+            columns: ["video_content_id"]
+            isOneToOne: false
+            referencedRelation: "video_content"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      video_watch_history: {
+        Row: {
+          completed: boolean | null
+          created_at: string | null
+          id: string
+          last_watched_at: string | null
+          lesson_id: string | null
+          user_id: string
+          video_content_id: string | null
+          watch_time_seconds: number | null
+        }
+        Insert: {
+          completed?: boolean | null
+          created_at?: string | null
+          id?: string
+          last_watched_at?: string | null
+          lesson_id?: string | null
+          user_id: string
+          video_content_id?: string | null
+          watch_time_seconds?: number | null
+        }
+        Update: {
+          completed?: boolean | null
+          created_at?: string | null
+          id?: string
+          last_watched_at?: string | null
+          lesson_id?: string | null
+          user_id?: string
+          video_content_id?: string | null
+          watch_time_seconds?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "video_watch_history_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lessons"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "video_watch_history_video_content_id_fkey"
+            columns: ["video_content_id"]
+            isOneToOne: false
+            referencedRelation: "video_content"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
@@ -928,6 +1141,15 @@ export type Database = {
       get_user_role: {
         Args: { user_id: string }
         Returns: Database["public"]["Enums"]["user_role"]
+      }
+      update_video_watch_progress: {
+        Args: {
+          p_video_content_id: string
+          p_lesson_id: string
+          p_watch_time_seconds: number
+          p_completed?: boolean
+        }
+        Returns: undefined
       }
     }
     Enums: {

@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -11,7 +12,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
-import { Menu, Settings, LogOut, User, Book, Calendar, Users } from 'lucide-react';
+import { Menu, Settings, LogOut, User, Book, Calendar, Users, Video } from 'lucide-react';
 
 export const Navigation: React.FC = () => {
   const { user, logout } = useAuth();
@@ -33,6 +34,7 @@ export const Navigation: React.FC = () => {
       { name: 'Dashboard', href: '/dashboard' },
       { name: 'Courses', href: '/courses' },
       { name: 'Lessons', href: '/lessons' },
+      { name: 'Video Library', href: '/video-library' },
       { name: 'Scholars', href: '/scholars' },
     ];
 

@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -14,14 +15,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { BookOpen, Plus, Search, Edit, Play, Clock, Users } from 'lucide-react';
+import { BookOpen, Plus, Search, Edit, Play, Clock, Users, Video } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { VideoPlayer } from '@/components/video/VideoPlayer';
 
 const formSchema = z.object({
   title: z.string().min(2, 'Title must be at least 2 characters'),
   description: z.string().optional(),
   content: z.string().optional(),
   video_url: z.string().url().optional().or(z.literal('')),
+  video_content_id: z.string().optional(),
   duration_minutes: z.number().min(1).optional(),
   class_id: z.string().min(1, 'Please select a class'),
   lesson_order: z.number().min(0).optional(),
@@ -37,6 +40,7 @@ export const LessonsPage: React.FC = () => {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingLesson, setEditingLesson] = useState<any>(null);
   const [selectedClass, setSelectedClass] = useState<string>('all');
+  const [previewingVideo, setPreviewingVideo] = useState<any>(null);
 
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
@@ -45,6 +49,7 @@ export const LessonsPage: React.FC = () => {
       description: '',
       content: '',
       video_url: '',
+      video_content_id: '',
       duration_minutes: 60,
       class_id: '',
       lesson_order: 0,
@@ -81,6 +86,21 @@ export const LessonsPage: React.FC = () => {
     enabled: !!user,
   });
 
+  // Fetch available video content for lessons
+  const { data: videoContent } = useQuery({
+    queryKey: ['video-content-for-lessons'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('video_content')
+        .select('id, title, duration_seconds, thumbnail_url')
+        .eq('upload_status', 'completed')
+        .order('title');
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!user && (user.role === 'admin' || user.role === 'teacher'),
+  });
+
   // Fetch lessons based on user role and selected class
   const { data: lessons, isLoading } = useQuery({
     queryKey: ['lessons', selectedClass],
@@ -90,7 +110,8 @@ export const LessonsPage: React.FC = () => {
         .select(`
           *,
           classes(name),
-          profiles!lessons_created_by_fkey(full_name)
+          profiles!lessons_created_by_fkey(full_name),
+          video_content(id, title, video_url, thumbnail_url, duration_seconds)
         `)
         .order('lesson_order', { ascending: true });
 
@@ -113,9 +134,10 @@ export const LessonsPage: React.FC = () => {
   const saveLessonMutation = useMutation({
     mutationFn: async (lessonData: FormData) => {
       const saveData = {
-        title: lessonData.title, // Ensure title is always included and not optional
+        title: lessonData.title,
         class_id: lessonData.class_id,
         video_url: lessonData.video_url || null,
+        video_content_id: lessonData.video_content_id || null,
         description: lessonData.description || null,
         content: lessonData.content || null,
         duration_minutes: lessonData.duration_minutes,
@@ -184,6 +206,7 @@ export const LessonsPage: React.FC = () => {
       description: lesson.description || '',
       content: lesson.content || '',
       video_url: lesson.video_url || '',
+      video_content_id: lesson.video_content_id || '',
       duration_minutes: lesson.duration_minutes || 60,
       class_id: lesson.class_id,
       lesson_order: lesson.lesson_order || 0,
@@ -303,10 +326,35 @@ export const LessonsPage: React.FC = () => {
                     </div>
                     <FormField
                       control={form.control}
+                      name="video_content_id"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Video Content (Optional)</FormLabel>
+                          <Select onValueChange={field.onChange} defaultValue={field.value}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select a video" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="">No video</SelectItem>
+                              {videoContent?.map((video) => (
+                                <SelectItem key={video.id} value={video.id}>
+                                  {video.title}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
                       name="video_url"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Video URL (Optional)</FormLabel>
+                          <FormLabel>Video URL (Optional - if not using video content)</FormLabel>
                           <FormControl>
                             <Input {...field} placeholder="https://youtube.com/watch?v=..." />
                           </FormControl>
@@ -418,6 +466,7 @@ export const LessonsPage: React.FC = () => {
                     <TableHead>Title</TableHead>
                     <TableHead>Class</TableHead>
                     <TableHead>Duration</TableHead>
+                    <TableHead>Video</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Created By</TableHead>
                     {canManageLessons && <TableHead>Actions</TableHead>}
@@ -441,6 +490,28 @@ export const LessonsPage: React.FC = () => {
                           <Clock className="h-4 w-4 mr-1 text-gray-400" />
                           {lesson.duration_minutes || 0} min
                         </div>
+                      </TableCell>
+                      <TableCell>
+                        {lesson.video_content ? (
+                          <div className="flex items-center space-x-2">
+                            <Video className="h-4 w-4 text-emerald-600" />
+                            <span className="text-sm text-emerald-600">Attached</span>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setPreviewingVideo(lesson.video_content)}
+                            >
+                              Preview
+                            </Button>
+                          </div>
+                        ) : lesson.video_url ? (
+                          <div className="flex items-center space-x-2">
+                            <Video className="h-4 w-4 text-blue-600" />
+                            <span className="text-sm text-blue-600">External</span>
+                          </div>
+                        ) : (
+                          <span className="text-sm text-gray-400">No video</span>
+                        )}
                       </TableCell>
                       <TableCell>
                         <Badge variant={lesson.is_published ? "default" : "secondary"}>
@@ -468,11 +539,17 @@ export const LessonsPage: React.FC = () => {
                             >
                               {lesson.is_published ? "Unpublish" : "Publish"}
                             </Button>
-                            {lesson.video_url && (
+                            {(lesson.video_url || lesson.video_content) && (
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => window.open(lesson.video_url, '_blank')}
+                                onClick={() => {
+                                  if (lesson.video_content) {
+                                    setPreviewingVideo(lesson.video_content);
+                                  } else if (lesson.video_url) {
+                                    window.open(lesson.video_url, '_blank');
+                                  }
+                                }}
                               >
                                 <Play className="h-4 w-4" />
                               </Button>
@@ -487,6 +564,21 @@ export const LessonsPage: React.FC = () => {
             )}
           </CardContent>
         </Card>
+
+        {/* Video Preview Dialog */}
+        {previewingVideo && (
+          <Dialog open={!!previewingVideo} onOpenChange={() => setPreviewingVideo(null)}>
+            <DialogContent className="sm:max-w-[800px]">
+              <DialogHeader>
+                <DialogTitle>Video Preview</DialogTitle>
+              </DialogHeader>
+              <VideoPlayer
+                videoContent={previewingVideo}
+                className="w-full"
+              />
+            </DialogContent>
+          </Dialog>
+        )}
       </div>
     </div>
   );
