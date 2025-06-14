@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -43,6 +42,7 @@ export const Navigation: React.FC = () => {
         return [
           ...baseItems,
           { name: 'Classes', href: '/admin/courses' },
+          { name: 'Create Course', href: '/admin/courses/create' },
           { name: 'Students', href: '/admin/students' },
           { name: 'Teachers', href: '/admin/teachers' },
           { name: 'Assignments', href: '/assignments' },
@@ -55,6 +55,7 @@ export const Navigation: React.FC = () => {
         return [
           ...baseItems,
           { name: 'My Classes', href: '/teacher/classes' },
+          { name: 'Create Course', href: '/admin/courses/create' },
           { name: 'Assignments', href: '/assignments' },
           { name: 'Gradebook', href: '/gradebook' },
           { name: 'Attendance', href: '/attendance' },

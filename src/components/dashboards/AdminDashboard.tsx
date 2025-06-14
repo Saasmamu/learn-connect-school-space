@@ -1,11 +1,10 @@
-
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { Users, GraduationCap, BookOpen, Bell } from 'lucide-react';
+import { Users, GraduationCap, BookOpen, Bell, Plus } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { NotificationsList } from '@/components/notifications/NotificationsList';
 import { ClassAssignments } from '@/components/admin/ClassAssignments';
@@ -97,7 +96,7 @@ export const AdminDashboard: React.FC = () => {
             <CardTitle>Quick Actions</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
               <Button onClick={() => navigate('/admin/students')} className="h-20 flex-col">
                 <Users className="h-6 w-6 mb-2" />
                 Manage Students
@@ -109,6 +108,10 @@ export const AdminDashboard: React.FC = () => {
               <Button onClick={() => navigate('/admin/courses')} className="h-20 flex-col">
                 <BookOpen className="h-6 w-6 mb-2" />
                 Manage Classes
+              </Button>
+              <Button onClick={() => navigate('/admin/courses/create')} className="h-20 flex-col bg-green-600 hover:bg-green-700">
+                <Plus className="h-6 w-6 mb-2" />
+                Create Course
               </Button>
               <Button onClick={() => navigate('/notifications')} className="h-20 flex-col">
                 <Bell className="h-6 w-6 mb-2" />
