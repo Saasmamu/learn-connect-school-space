@@ -39,9 +39,9 @@ interface VideoWithProfile {
   video_quality: string;
   upload_status: string;
   created_at: string;
-  profiles?: {
+  profiles?: Array<{
     full_name: string;
-  };
+  }>;
   video_processing_jobs?: Array<{
     processing_status: string;
     progress_percentage: number;
@@ -151,7 +151,7 @@ export const VideoLibraryPage: React.FC = () => {
       video_url: video.video_url || '',
       thumbnail_url: video.thumbnail_url || '',
       duration_seconds: video.duration_seconds || 0,
-      video_quality: video.video_quality || 'HD',
+      video_quality: (video.video_quality || 'HD') as 'SD' | 'HD' | '4K',
     });
     setIsDialogOpen(true);
   };
@@ -422,7 +422,9 @@ export const VideoLibraryPage: React.FC = () => {
                           {video.upload_status}
                         </Badge>
                       </TableCell>
-                      <TableCell>{video.profiles?.full_name || 'Unknown'}</TableCell>
+                      <TableCell>
+                        {video.profiles && video.profiles.length > 0 ? video.profiles[0].full_name : 'Unknown'}
+                      </TableCell>
                       <TableCell>
                         {new Date(video.created_at).toLocaleDateString()}
                       </TableCell>
