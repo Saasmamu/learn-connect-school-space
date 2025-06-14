@@ -20,6 +20,8 @@ interface Teacher {
   social_media_links?: any;
   email?: string;
   phone?: string;
+  role: string;
+  is_featured: boolean;
 }
 
 export const ScholarsPage: React.FC = () => {
@@ -32,33 +34,51 @@ export const ScholarsPage: React.FC = () => {
   const { toast } = useToast();
 
   useEffect(() => {
-    fetchFeaturedTeachers();
+    fetchTeachers();
   }, []);
 
   useEffect(() => {
     filterTeachers();
   }, [teachers, searchTerm, selectedSpecialization]);
 
-  const fetchFeaturedTeachers = async () => {
+  const fetchTeachers = async () => {
     try {
-      const { data, error } = await supabase
+      console.log('Fetching teachers...');
+      
+      // First, let's fetch all profiles with teacher role
+      const { data: allTeachers, error: allError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('role', 'teacher');
+
+      console.log('All teachers:', allTeachers);
+
+      // Then fetch only featured teachers
+      const { data: featuredTeachers, error } = await supabase
         .from('profiles')
         .select('*')
         .eq('role', 'teacher')
         .eq('is_featured', true);
 
-      if (error) throw error;
+      console.log('Featured teachers:', featuredTeachers);
 
-      setTeachers(data || []);
+      if (error) {
+        console.error('Error fetching teachers:', error);
+        throw error;
+      }
+
+      setTeachers(featuredTeachers || []);
       
       // Extract all specializations
       const specs = new Set<string>();
-      data?.forEach(teacher => {
+      featuredTeachers?.forEach(teacher => {
         if (teacher.specializations) {
           teacher.specializations.forEach((spec: string) => specs.add(spec));
         }
       });
       setAllSpecializations(Array.from(specs));
+      
+      console.log('Teachers set:', featuredTeachers?.length || 0);
     } catch (error) {
       console.error('Error fetching teachers:', error);
       toast({
@@ -211,14 +231,36 @@ export const ScholarsPage: React.FC = () => {
         </CardContent>
       </Card>
 
+      {/* Debug Information */}
+      <Card className="mb-8 bg-blue-50">
+        <CardContent className="p-4">
+          <p className="text-sm text-blue-800">
+            Debug: Found {teachers.length} featured teachers. 
+            {teachers.length === 0 && (
+              <span className="block mt-2">
+                If you're not seeing any teachers, make sure:
+                <br />• At least one profile has role = 'teacher'
+                <br />• The teacher profile has is_featured = true
+                <br />• Check the browser console for any errors
+              </span>
+            )}
+          </p>
+        </CardContent>
+      </Card>
+
       {/* Teachers Grid */}
       {filteredTeachers.length === 0 ? (
         <Card>
           <CardContent className="p-8 text-center">
             <Search className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-            <h3 className="text-lg font-semibold mb-2">No teachers found</h3>
+            <h3 className="text-lg font-semibold mb-2">
+              {teachers.length === 0 ? 'No featured teachers found' : 'No teachers found'}
+            </h3>
             <p className="text-muted-foreground">
-              Try adjusting your search criteria or clear the filters.
+              {teachers.length === 0 
+                ? 'Please make sure some teacher profiles are marked as featured in the database.'
+                : 'Try adjusting your search criteria or clear the filters.'
+              }
             </p>
           </CardContent>
         </Card>

@@ -1,380 +1,520 @@
 
-import React, { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import React, { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from '@/contexts/AuthContext';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Textarea } from '@/components/ui/textarea';
-import { Switch } from '@/components/ui/switch';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import * as z from 'zod';
-import { FolderOpen, Plus, Video, Trash2, Eye, EyeOff } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
+import { Plus, Edit, Trash2, Video, Eye, EyeOff } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
 
-const playlistSchema = z.object({
-  name: z.string().min(2, 'Name must be at least 2 characters'),
-  description: z.string().optional(),
-  is_public: z.boolean().default(false),
-});
-
-type PlaylistFormData = z.infer<typeof playlistSchema>;
-
-interface VideoPlaylistManagerProps {
-  className?: string;
+interface VideoContent {
+  id: string;
+  title: string;
+  description?: string;
+  video_url: string;
+  thumbnail_url?: string;
+  upload_status: string;
 }
 
-export const VideoPlaylistManager: React.FC<VideoPlaylistManagerProps> = ({ className = "" }) => {
-  const { user } = useAuth();
+interface Playlist {
+  id: string;
+  name: string;
+  description?: string;
+  is_public: boolean;
+  created_at: string;
+  video_count?: number;
+}
+
+interface PlaylistItem {
+  id: string;
+  video_content_id: string;
+  sort_order: number;
+  video_content: VideoContent;
+}
+
+export const VideoPlaylistManager: React.FC = () => {
+  const [playlists, setPlaylists] = useState<Playlist[]>([]);
+  const [videos, setVideos] = useState<VideoContent[]>([]);
+  const [selectedPlaylist, setSelectedPlaylist] = useState<Playlist | null>(null);
+  const [playlistItems, setPlaylistItems] = useState<PlaylistItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [editingPlaylist, setEditingPlaylist] = useState<Playlist | null>(null);
   const { toast } = useToast();
-  const queryClient = useQueryClient();
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [editingPlaylist, setEditingPlaylist] = useState<any>(null);
-  const [selectedPlaylist, setSelectedPlaylist] = useState<string | null>(null);
 
-  const form = useForm<PlaylistFormData>({
-    resolver: zodResolver(playlistSchema),
-    defaultValues: {
-      name: '',
-      description: '',
-      is_public: false,
-    },
-  });
+  // Form states
+  const [playlistName, setPlaylistName] = useState('');
+  const [playlistDescription, setPlaylistDescription] = useState('');
+  const [isPublic, setIsPublic] = useState(false);
 
-  // Fetch playlists
-  const { data: playlists, isLoading: playlistsLoading } = useQuery({
-    queryKey: ['video-playlists'],
-    queryFn: async () => {
+  useEffect(() => {
+    fetchPlaylists();
+    fetchVideos();
+  }, []);
+
+  const fetchPlaylists = async () => {
+    try {
       const { data, error } = await supabase
         .from('video_playlists')
         .select(`
           *,
-          profiles!video_playlists_created_by_fkey(full_name),
-          video_playlist_items(
-            id,
-            video_content(id, title, thumbnail_url, duration_seconds)
-          )
+          video_playlist_items(count)
         `)
         .order('created_at', { ascending: false });
-      
-      if (error) throw error;
-      return data;
-    },
-    enabled: !!user,
-  });
 
-  // Fetch available videos for adding to playlist
-  const { data: availableVideos } = useQuery({
-    queryKey: ['available-videos'],
-    queryFn: async () => {
+      if (error) throw error;
+
+      const playlistsWithCount = data?.map(playlist => ({
+        ...playlist,
+        video_count: playlist.video_playlist_items?.[0]?.count || 0
+      })) || [];
+
+      setPlaylists(playlistsWithCount);
+    } catch (error) {
+      console.error('Error fetching playlists:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to load playlists',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const fetchVideos = async () => {
+    try {
       const { data, error } = await supabase
         .from('video_content')
-        .select('id, title, thumbnail_url, duration_seconds')
+        .select('*')
         .eq('upload_status', 'completed')
-        .order('title');
-      
+        .order('created_at', { ascending: false });
+
       if (error) throw error;
-      return data;
-    },
-    enabled: !!user,
-  });
+      setVideos(data || []);
+    } catch (error) {
+      console.error('Error fetching videos:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-  // Create/Update playlist mutation
-  const savePlaylistMutation = useMutation({
-    mutationFn: async (playlistData: PlaylistFormData) => {
-      const saveData = {
-        name: playlistData.name,
-        description: playlistData.description || null,
-        is_public: playlistData.is_public,
-        created_by: user?.id,
-      };
-
-      if (editingPlaylist) {
-        const { error } = await supabase
-          .from('video_playlists')
-          .update(saveData)
-          .eq('id', editingPlaylist.id);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase
-          .from('video_playlists')
-          .insert(saveData);
-        if (error) throw error;
-      }
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['video-playlists'] });
-      toast({
-        title: "Success",
-        description: editingPlaylist ? "Playlist updated successfully" : "Playlist created successfully",
-      });
-      setIsDialogOpen(false);
-      setEditingPlaylist(null);
-      form.reset();
-    },
-    onError: (error) => {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
-  });
-
-  // Add video to playlist mutation
-  const addVideoToPlaylistMutation = useMutation({
-    mutationFn: async ({ playlistId, videoId }: { playlistId: string; videoId: string }) => {
-      // Get the next sort order
-      const { data: existingItems } = await supabase
+  const fetchPlaylistItems = async (playlistId: string) => {
+    try {
+      const { data, error } = await supabase
         .from('video_playlist_items')
-        .select('sort_order')
+        .select(`
+          *,
+          video_content(*)
+        `)
         .eq('playlist_id', playlistId)
-        .order('sort_order', { ascending: false })
-        .limit(1);
+        .order('sort_order');
 
-      const nextSortOrder = existingItems && existingItems.length > 0 
-        ? existingItems[0].sort_order + 1 
-        : 0;
+      if (error) throw error;
+      setPlaylistItems(data || []);
+    } catch (error) {
+      console.error('Error fetching playlist items:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to load playlist items',
+        variant: 'destructive',
+      });
+    }
+  };
 
+  const createPlaylist = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('video_playlists')
+        .insert({
+          name: playlistName,
+          description: playlistDescription,
+          is_public: isPublic,
+          created_by: (await supabase.auth.getUser()).data.user?.id
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      toast({
+        title: 'Success',
+        description: 'Playlist created successfully',
+      });
+
+      setIsCreateDialogOpen(false);
+      resetForm();
+      fetchPlaylists();
+    } catch (error) {
+      console.error('Error creating playlist:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to create playlist',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const updatePlaylist = async () => {
+    if (!editingPlaylist) return;
+
+    try {
+      const { error } = await supabase
+        .from('video_playlists')
+        .update({
+          name: playlistName,
+          description: playlistDescription,
+          is_public: isPublic,
+        })
+        .eq('id', editingPlaylist.id);
+
+      if (error) throw error;
+
+      toast({
+        title: 'Success',
+        description: 'Playlist updated successfully',
+      });
+
+      setEditingPlaylist(null);
+      resetForm();
+      fetchPlaylists();
+    } catch (error) {
+      console.error('Error updating playlist:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to update playlist',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const deletePlaylist = async (playlistId: string) => {
+    try {
+      const { error } = await supabase
+        .from('video_playlists')
+        .delete()
+        .eq('id', playlistId);
+
+      if (error) throw error;
+
+      toast({
+        title: 'Success',
+        description: 'Playlist deleted successfully',
+      });
+
+      fetchPlaylists();
+      if (selectedPlaylist?.id === playlistId) {
+        setSelectedPlaylist(null);
+        setPlaylistItems([]);
+      }
+    } catch (error) {
+      console.error('Error deleting playlist:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to delete playlist',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const addVideoToPlaylist = async (videoId: string) => {
+    if (!selectedPlaylist) return;
+
+    try {
+      const maxOrder = Math.max(...playlistItems.map(item => item.sort_order), -1);
+      
       const { error } = await supabase
         .from('video_playlist_items')
         .insert({
-          playlist_id: playlistId,
+          playlist_id: selectedPlaylist.id,
           video_content_id: videoId,
-          sort_order: nextSortOrder,
+          sort_order: maxOrder + 1
         });
 
       if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['video-playlists'] });
-      toast({
-        title: "Success",
-        description: "Video added to playlist",
-      });
-    },
-    onError: (error) => {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
-  });
 
-  // Remove video from playlist mutation
-  const removeVideoFromPlaylistMutation = useMutation({
-    mutationFn: async ({ playlistId, videoId }: { playlistId: string; videoId: string }) => {
+      toast({
+        title: 'Success',
+        description: 'Video added to playlist',
+      });
+
+      fetchPlaylistItems(selectedPlaylist.id);
+    } catch (error) {
+      console.error('Error adding video to playlist:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to add video to playlist',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const removeVideoFromPlaylist = async (itemId: string) => {
+    try {
       const { error } = await supabase
         .from('video_playlist_items')
         .delete()
-        .eq('playlist_id', playlistId)
-        .eq('video_content_id', videoId);
+        .eq('id', itemId);
 
       if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['video-playlists'] });
-      toast({
-        title: "Success",
-        description: "Video removed from playlist",
-      });
-    },
-    onError: (error) => {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
-  });
 
-  const onSubmit = (values: PlaylistFormData) => {
-    savePlaylistMutation.mutate(values);
+      toast({
+        title: 'Success',
+        description: 'Video removed from playlist',
+      });
+
+      if (selectedPlaylist) {
+        fetchPlaylistItems(selectedPlaylist.id);
+      }
+    } catch (error) {
+      console.error('Error removing video from playlist:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to remove video from playlist',
+        variant: 'destructive',
+      });
+    }
   };
 
-  const openEditDialog = (playlist: any) => {
+  const resetForm = () => {
+    setPlaylistName('');
+    setPlaylistDescription('');
+    setIsPublic(false);
+  };
+
+  const handleEditPlaylist = (playlist: Playlist) => {
     setEditingPlaylist(playlist);
-    form.reset({
-      name: playlist.name,
-      description: playlist.description || '',
-      is_public: playlist.is_public,
-    });
-    setIsDialogOpen(true);
+    setPlaylistName(playlist.name);
+    setPlaylistDescription(playlist.description || '');
+    setIsPublic(playlist.is_public);
+    setIsCreateDialogOpen(true);
   };
 
-  const formatDuration = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  const handleSelectPlaylist = (playlist: Playlist) => {
+    setSelectedPlaylist(playlist);
+    fetchPlaylistItems(playlist.id);
   };
 
-  const canManagePlaylists = user?.role === 'admin' || user?.role === 'teacher';
+  if (isLoading) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <div className="text-center">Loading playlists...</div>
+      </div>
+    );
+  }
 
   return (
-    <div className={className}>
+    <div className="container mx-auto px-4 py-8">
       <div className="flex justify-between items-center mb-6">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">Video Playlists</h2>
-          <p className="text-gray-600">Organize videos into curated playlists</p>
-        </div>
-        {canManagePlaylists && (
-          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-            <DialogTrigger asChild>
-              <Button onClick={() => { setEditingPlaylist(null); form.reset(); }}>
-                <Plus className="mr-2 h-4 w-4" />
-                Create Playlist
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>{editingPlaylist ? 'Edit Playlist' : 'Create New Playlist'}</DialogTitle>
-                <DialogDescription>
-                  {editingPlaylist ? 'Update playlist information' : 'Create a new video playlist'}
-                </DialogDescription>
-              </DialogHeader>
-              <Form {...form}>
-                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                  <FormField
-                    control={form.control}
-                    name="name"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Playlist Name</FormLabel>
-                        <FormControl>
-                          <Input {...field} placeholder="e.g., Islamic History Series" />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="description"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Description</FormLabel>
-                        <FormControl>
-                          <Textarea {...field} placeholder="Playlist description..." />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="is_public"
-                    render={({ field }) => (
-                      <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
-                        <div className="space-y-0.5">
-                          <FormLabel className="text-base">Public Playlist</FormLabel>
-                          <div className="text-sm text-muted-foreground">
-                            Make this playlist visible to all users
-                          </div>
-                        </div>
-                        <FormControl>
-                          <Switch
-                            checked={field.value}
-                            onCheckedChange={field.onChange}
-                          />
-                        </FormControl>
-                      </FormItem>
-                    )}
-                  />
-                  <DialogFooter>
-                    <Button type="submit" disabled={savePlaylistMutation.isPending}>
-                      {editingPlaylist ? 'Update' : 'Create'} Playlist
-                    </Button>
-                  </DialogFooter>
-                </form>
-              </Form>
-            </DialogContent>
-          </Dialog>
-        )}
+        <h1 className="text-3xl font-bold">Video Playlist Manager</h1>
+        <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+          <DialogTrigger asChild>
+            <Button onClick={resetForm}>
+              <Plus className="h-4 w-4 mr-2" />
+              Create Playlist
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>
+                {editingPlaylist ? 'Edit Playlist' : 'Create New Playlist'}
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <Input
+                placeholder="Playlist name"
+                value={playlistName}
+                onChange={(e) => setPlaylistName(e.target.value)}
+              />
+              <Textarea
+                placeholder="Description (optional)"
+                value={playlistDescription}
+                onChange={(e) => setPlaylistDescription(e.target.value)}
+              />
+              <div className="flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  id="isPublic"
+                  checked={isPublic}
+                  onChange={(e) => setIsPublic(e.target.checked)}
+                />
+                <label htmlFor="isPublic">Make playlist public</label>
+              </div>
+              <div className="flex space-x-2">
+                <Button 
+                  onClick={editingPlaylist ? updatePlaylist : createPlaylist}
+                  disabled={!playlistName.trim()}
+                >
+                  {editingPlaylist ? 'Update' : 'Create'}
+                </Button>
+                <Button 
+                  variant="outline" 
+                  onClick={() => {
+                    setIsCreateDialogOpen(false);
+                    setEditingPlaylist(null);
+                    resetForm();
+                  }}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
 
-      {playlistsLoading ? (
-        <div className="text-center py-8">Loading playlists...</div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {playlists?.map((playlist) => (
-            <Card key={playlist.id} className="cursor-pointer hover:shadow-lg transition-shadow">
-              <CardHeader>
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center space-x-2">
-                    <FolderOpen className="h-5 w-5 text-emerald-600" />
-                    <CardTitle className="text-lg">{playlist.name}</CardTitle>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    {playlist.is_public ? (
-                      <Eye className="h-4 w-4 text-green-600" title="Public playlist" />
-                    ) : (
-                      <EyeOff className="h-4 w-4 text-gray-400" title="Private playlist" />
-                    )}
-                    <Badge variant="outline">
-                      {playlist.video_playlist_items?.length || 0} videos
-                    </Badge>
-                  </div>
-                </div>
-                <CardDescription>{playlist.description}</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {playlist.video_playlist_items?.slice(0, 3).map((item: any) => (
-                    <div key={item.id} className="flex items-center space-x-3">
-                      {item.video_content?.thumbnail_url ? (
-                        <img 
-                          src={item.video_content.thumbnail_url} 
-                          alt={item.video_content.title}
-                          className="w-12 h-8 object-cover rounded"
-                        />
-                      ) : (
-                        <div className="w-12 h-8 bg-gray-200 rounded flex items-center justify-center">
-                          <Video className="h-3 w-3 text-gray-400" />
-                        </div>
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{item.video_content?.title}</p>
-                        <p className="text-xs text-gray-500">
-                          {item.video_content?.duration_seconds 
-                            ? formatDuration(item.video_content.duration_seconds)
-                            : 'N/A'
-                          }
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Playlists List */}
+        <Card>
+          <CardHeader>
+            <CardTitle>My Playlists</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {playlists.map((playlist) => (
+                <div
+                  key={playlist.id}
+                  className={`p-3 border rounded-lg cursor-pointer transition-colors ${
+                    selectedPlaylist?.id === playlist.id
+                      ? 'bg-blue-50 border-blue-200'
+                      : 'hover:bg-gray-50'
+                  }`}
+                  onClick={() => handleSelectPlaylist(playlist)}
+                >
+                  <div className="flex justify-between items-start">
+                    <div className="flex-1">
+                      <h3 className="font-medium">{playlist.name}</h3>
+                      {playlist.description && (
+                        <p className="text-sm text-gray-600 mt-1">
+                          {playlist.description}
                         </p>
+                      )}
+                      <div className="flex items-center space-x-2 mt-2">
+                        <Badge variant="secondary">
+                          {playlist.video_count} videos
+                        </Badge>
+                        {playlist.is_public ? (
+                          <Eye className="h-4 w-4 text-green-600" />
+                        ) : (
+                          <EyeOff className="h-4 w-4 text-gray-400" />
+                        )}
                       </div>
                     </div>
-                  ))}
-                  {playlist.video_playlist_items?.length > 3 && (
-                    <p className="text-sm text-gray-500">
-                      +{playlist.video_playlist_items.length - 3} more videos
-                    </p>
-                  )}
-                </div>
-                
-                {canManagePlaylists && playlist.created_by === user?.id && (
-                  <div className="flex justify-between items-center mt-4 pt-4 border-t">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => openEditDialog(playlist)}
-                    >
-                      Edit
-                    </Button>
-                    <p className="text-xs text-gray-500">
-                      Created by {playlist.profiles?.full_name}
-                    </p>
+                    <div className="flex space-x-1">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleEditPlaylist(playlist);
+                        }}
+                      >
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          deletePlaylist(playlist.id);
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
-                )}
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
+                </div>
+              ))}
+              {playlists.length === 0 && (
+                <p className="text-gray-500 text-center py-4">
+                  No playlists yet. Create your first playlist!
+                </p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Playlist Content */}
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              {selectedPlaylist ? selectedPlaylist.name : 'Select a Playlist'}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {selectedPlaylist ? (
+              <div className="space-y-4">
+                {/* Current Videos in Playlist */}
+                <div>
+                  <h4 className="font-medium mb-2">Videos in Playlist</h4>
+                  <div className="space-y-2">
+                    {playlistItems.map((item) => (
+                      <div
+                        key={item.id}
+                        className="flex justify-between items-center p-2 border rounded"
+                      >
+                        <div className="flex items-center space-x-2">
+                          <Video className="h-4 w-4" />
+                          <span className="text-sm font-medium">
+                            {item.video_content.title}
+                          </span>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => removeVideoFromPlaylist(item.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                    {playlistItems.length === 0 && (
+                      <p className="text-gray-500 text-sm">No videos in this playlist yet.</p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Available Videos to Add */}
+                <div>
+                  <h4 className="font-medium mb-2">Add Videos</h4>
+                  <div className="space-y-2 max-h-64 overflow-y-auto">
+                    {videos
+                      .filter(video => !playlistItems.some(item => item.video_content_id === video.id))
+                      .map((video) => (
+                        <div
+                          key={video.id}
+                          className="flex justify-between items-center p-2 border rounded"
+                        >
+                          <div className="flex items-center space-x-2">
+                            <Video className="h-4 w-4" />
+                            <span className="text-sm">{video.title}</span>
+                          </div>
+                          <Button
+                            size="sm"
+                            onClick={() => addVideoToPlaylist(video.id)}
+                          >
+                            <Plus className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <p className="text-gray-500 text-center py-8">
+                Select a playlist from the left to manage its content.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 };
