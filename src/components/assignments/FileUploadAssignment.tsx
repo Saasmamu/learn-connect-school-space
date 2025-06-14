@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -51,7 +50,7 @@ export const FileUploadAssignment: React.FC<FileUploadAssignmentProps> = ({
         .from('assignment_files')
         .select(`
           *,
-          profiles!assignment_files_uploaded_by_fkey(full_name)
+          profiles!inner(full_name)
         `)
         .eq('assignment_id', assignmentId)
         .order('uploaded_at', { ascending: false });

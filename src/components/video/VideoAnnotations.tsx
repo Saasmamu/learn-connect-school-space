@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -50,7 +51,7 @@ export const VideoAnnotations: React.FC<VideoAnnotationsProps> = ({
         .from('video_annotations')
         .select(`
           *,
-          profiles!video_annotations_user_id_fkey(full_name)
+          profiles!inner(full_name)
         `)
         .eq('video_content_id', videoContentId)
         .order('timestamp_seconds', { ascending: true });
