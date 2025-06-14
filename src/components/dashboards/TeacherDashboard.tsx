@@ -176,9 +176,9 @@ export const TeacherDashboard: React.FC = () => {
                           <div className="flex gap-2">
                             <Button 
                               size="sm"
-                              onClick={() => navigate(`/teacher/classes/${assignment.classes.id}`)}
+                              onClick={() => navigate('/teacher/classes')}
                             >
-                              Manage Class
+                              View All Classes
                             </Button>
                             <Button 
                               size="sm"

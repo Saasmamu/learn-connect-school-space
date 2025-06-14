@@ -24,6 +24,7 @@ import { SettingsPage } from "./pages/SettingsPage";
 import { VideoLibraryPage } from "./pages/VideoLibraryPage";
 import { CoursesPage as AdminCoursesPage } from "./pages/admin/CoursesPage";
 import { CourseCreationPage } from "./pages/admin/CourseCreationPage";
+import { TeacherClassesPage } from "./pages/teacher/TeacherClassesPage";
 
 const queryClient = new QueryClient();
 
@@ -55,6 +56,7 @@ function App() {
                 <Route path="/video-library" element={<VideoLibraryPage />} />
                 <Route path="/admin/courses" element={<AdminCoursesPage />} />
                 <Route path="/admin/courses/create" element={<CourseCreationPage />} />
+                <Route path="/teacher/classes" element={<TeacherClassesPage />} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </div>
