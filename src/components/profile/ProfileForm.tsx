@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -47,6 +47,7 @@ export const ProfileForm: React.FC<ProfileFormProps> = ({ onSuccess }) => {
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string>('');
   const [newSpecialization, setNewSpecialization] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { register, handleSubmit, formState: { errors }, watch, setValue, reset } = useForm<ProfileFormData>({
     resolver: zodResolver(profileSchema),
@@ -128,6 +129,10 @@ export const ProfileForm: React.FC<ProfileFormProps> = ({ onSuccess }) => {
       };
       reader.readAsDataURL(file);
     }
+  };
+
+  const handleAvatarUploadClick = () => {
+    fileInputRef.current?.click();
   };
 
   const uploadAvatar = async (): Promise<string | null> => {
@@ -219,19 +224,17 @@ export const ProfileForm: React.FC<ProfileFormProps> = ({ onSuccess }) => {
             <AvatarFallback>{user.email?.charAt(0).toUpperCase()}</AvatarFallback>
           </Avatar>
           <div>
-            <label htmlFor="avatar" className="cursor-pointer">
-              <Button type="button" variant="outline" className="flex items-center space-x-2">
-                <Upload className="h-4 w-4" />
-                <span>Upload Photo</span>
-              </Button>
-              <input
-                id="avatar"
-                type="file"
-                accept="image/*"
-                onChange={handleAvatarChange}
-                className="hidden"
-              />
-            </label>
+            <Button type="button" variant="outline" onClick={handleAvatarUploadClick} className="flex items-center space-x-2">
+              <Upload className="h-4 w-4" />
+              <span>Upload Photo</span>
+            </Button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleAvatarChange}
+              className="hidden"
+            />
           </div>
         </CardContent>
       </Card>
