@@ -30,6 +30,10 @@ import { TeacherGradebookPage } from "./pages/teacher/TeacherGradebookPage";
 import { StudentClassesPage } from "./pages/student/StudentClassesPage";
 import { StudentLessonsPage } from "./pages/student/StudentLessonsPage";
 import { NotificationsPage } from "./pages/NotificationsPage";
+import { ProfilePage } from "./pages/ProfilePage";
+import { SettingsPage } from "./pages/SettingsPage";
+import { ScholarsPage } from "./pages/ScholarsPage";
+import { StudentsPage as StudentsDirectoryPage } from "./pages/StudentsPage";
 
 const queryClient = new QueryClient();
 
@@ -48,10 +52,14 @@ const App = () => (
               <Route path="/about" element={<AboutPage />} />
               <Route path="/admissions" element={<AdmissionsPage />} />
               <Route path="/courses" element={<CoursesPage />} />
+              <Route path="/scholars" element={<ScholarsPage />} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/register" element={<RegisterPage />} />
               <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/profile" element={<ProfilePage />} />
+              <Route path="/settings" element={<SettingsPage />} />
               <Route path="/notifications" element={<NotificationsPage />} />
+              <Route path="/students" element={<StudentsDirectoryPage />} />
               
               {/* Admin Routes */}
               <Route path="/admin/students" element={<StudentsPage />} />

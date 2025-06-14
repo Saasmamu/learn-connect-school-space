@@ -635,38 +635,56 @@ export type Database = {
         Row: {
           address: string | null
           avatar_url: string | null
+          bio: string | null
           created_at: string
           date_of_birth: string | null
+          education_background: string | null
           email: string
           full_name: string
           id: string
+          is_featured: boolean | null
           phone: string | null
           role: Database["public"]["Enums"]["user_role"]
+          social_media_links: Json | null
+          specializations: string[] | null
           updated_at: string
+          years_experience: number | null
         }
         Insert: {
           address?: string | null
           avatar_url?: string | null
+          bio?: string | null
           created_at?: string
           date_of_birth?: string | null
+          education_background?: string | null
           email: string
           full_name: string
           id: string
+          is_featured?: boolean | null
           phone?: string | null
           role?: Database["public"]["Enums"]["user_role"]
+          social_media_links?: Json | null
+          specializations?: string[] | null
           updated_at?: string
+          years_experience?: number | null
         }
         Update: {
           address?: string | null
           avatar_url?: string | null
+          bio?: string | null
           created_at?: string
           date_of_birth?: string | null
+          education_background?: string | null
           email?: string
           full_name?: string
           id?: string
+          is_featured?: boolean | null
           phone?: string | null
           role?: Database["public"]["Enums"]["user_role"]
+          social_media_links?: Json | null
+          specializations?: string[] | null
           updated_at?: string
+          years_experience?: number | null
         }
         Relationships: []
       }
