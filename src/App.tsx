@@ -1,4 +1,3 @@
-
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -25,6 +24,7 @@ import { VideoLibraryPage } from "./pages/VideoLibraryPage";
 import { CoursesPage as AdminCoursesPage } from "./pages/admin/CoursesPage";
 import { CourseCreationPage } from "./pages/admin/CourseCreationPage";
 import { TeacherClassesPage } from "./pages/teacher/TeacherClassesPage";
+import { MyCoursesPage } from "./pages/MyCoursesPage";
 
 const queryClient = new QueryClient();
 
@@ -46,6 +46,7 @@ function App() {
                 <Route path="/about" element={<AboutPage />} />
                 <Route path="/admissions" element={<AdmissionsPage />} />
                 <Route path="/courses" element={<CoursesPage />} />
+                <Route path="/my-courses" element={<MyCoursesPage />} />
                 <Route path="/lessons" element={<LessonsPage />} />
                 <Route path="/assignments" element={<AssignmentsPage />} />
                 <Route path="/gradebook" element={<GradebookPage />} />

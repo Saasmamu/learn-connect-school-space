@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -125,8 +124,12 @@ export const TeacherDashboard: React.FC = () => {
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <Button onClick={() => navigate('/teacher/classes')} className="h-20 flex-col">
+              <Button onClick={() => navigate('/my-courses')} className="h-20 flex-col">
                 <BookOpen className="h-6 w-6 mb-2" />
+                My Courses
+              </Button>
+              <Button onClick={() => navigate('/teacher/classes')} className="h-20 flex-col">
+                <Users className="h-6 w-6 mb-2" />
                 My Classes
               </Button>
               <Button onClick={() => navigate('/lessons')} className="h-20 flex-col">
@@ -136,10 +139,6 @@ export const TeacherDashboard: React.FC = () => {
               <Button onClick={() => navigate('/assignments')} className="h-20 flex-col">
                 <FileText className="h-6 w-6 mb-2" />
                 Assignments
-              </Button>
-              <Button onClick={() => navigate('/notifications')} className="h-20 flex-col">
-                <Bell className="h-6 w-6 mb-2" />
-                Notifications
               </Button>
             </div>
           </CardContent>

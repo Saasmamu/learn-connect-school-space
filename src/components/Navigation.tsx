@@ -41,6 +41,7 @@ export const Navigation: React.FC = () => {
       case 'admin':
         return [
           ...baseItems,
+          { name: 'My Courses', href: '/my-courses' },
           { name: 'Classes', href: '/admin/courses' },
           { name: 'Create Course', href: '/admin/courses/create' },
           { name: 'Students', href: '/admin/students' },
@@ -54,6 +55,7 @@ export const Navigation: React.FC = () => {
       case 'teacher':
         return [
           ...baseItems,
+          { name: 'My Courses', href: '/my-courses' },
           { name: 'My Classes', href: '/teacher/classes' },
           { name: 'Create Course', href: '/admin/courses/create' },
           { name: 'Assignments', href: '/assignments' },
