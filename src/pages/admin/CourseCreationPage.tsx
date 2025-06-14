@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
@@ -47,6 +46,7 @@ export const CourseCreationPage: React.FC = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [currentStep, setCurrentStep] = useState(1);
+  const [savedCourseId, setSavedCourseId] = useState<string | null>(null);
   const [courseData, setCourseData] = useState<CourseData>({
     name: '',
     description: '',
@@ -75,20 +75,38 @@ export const CourseCreationPage: React.FC = () => {
 
   const handleSaveDraft = async () => {
     try {
-      const { data, error } = await supabase
-        .from('courses')
-        .insert({
-          title: courseData.name,
-          description: courseData.description,
-          level: courseData.grade_level,
-          instructor_id: user?.id,
-          is_published: false,
-          is_public: false,
-        })
-        .select()
-        .single();
+      if (savedCourseId) {
+        // Update existing draft
+        const { error } = await supabase
+          .from('courses')
+          .update({
+            title: courseData.name,
+            description: courseData.description,
+            level: courseData.grade_level,
+            is_published: false,
+            is_public: false,
+          })
+          .eq('id', savedCourseId);
 
-      if (error) throw error;
+        if (error) throw error;
+      } else {
+        // Create new draft
+        const { data, error } = await supabase
+          .from('courses')
+          .insert({
+            title: courseData.name,
+            description: courseData.description,
+            level: courseData.grade_level,
+            instructor_id: user?.id,
+            is_published: false,
+            is_public: false,
+          })
+          .select()
+          .single();
+
+        if (error) throw error;
+        setSavedCourseId(data.id);
+      }
 
       toast({
         title: "Draft Saved",
@@ -106,20 +124,79 @@ export const CourseCreationPage: React.FC = () => {
 
   const handlePublishCourse = async () => {
     try {
-      const { data, error } = await supabase
-        .from('courses')
-        .insert({
-          title: courseData.name,
-          description: courseData.description,
-          level: courseData.grade_level,
-          instructor_id: user?.id,
-          is_published: courseData.settings.is_published,
-          is_public: true,
-        })
-        .select()
-        .single();
+      let courseId = savedCourseId;
 
-      if (error) throw error;
+      if (!courseId) {
+        // Create new course if not saved as draft
+        const { data, error } = await supabase
+          .from('courses')
+          .insert({
+            title: courseData.name,
+            description: courseData.description,
+            level: courseData.grade_level,
+            instructor_id: user?.id,
+            is_published: true,
+            is_public: true,
+          })
+          .select()
+          .single();
+
+        if (error) throw error;
+        courseId = data.id;
+      } else {
+        // Update existing draft to published
+        const { error } = await supabase
+          .from('courses')
+          .update({
+            title: courseData.name,
+            description: courseData.description,
+            level: courseData.grade_level,
+            is_published: true,
+            is_public: true,
+          })
+          .eq('id', courseId);
+
+        if (error) throw error;
+      }
+
+      // Save lessons if any
+      if (courseData.lessons.length > 0) {
+        // First create lessons in the lessons table
+        const lessonsToInsert = courseData.lessons.map(lesson => ({
+          title: lesson.title,
+          description: lesson.description,
+          content: lesson.content,
+          video_url: lesson.video_url,
+          duration_minutes: lesson.duration_minutes,
+          lesson_order: lesson.lesson_order,
+          created_by: user?.id,
+          is_published: true,
+        }));
+
+        const { data: createdLessons, error: lessonsError } = await supabase
+          .from('lessons')
+          .insert(lessonsToInsert)
+          .select();
+
+        if (lessonsError) {
+          console.error('Error creating lessons:', lessonsError);
+        } else if (createdLessons) {
+          // Link lessons to course
+          const courseLessonsToInsert = createdLessons.map(lesson => ({
+            course_id: courseId,
+            lesson_id: lesson.id,
+            lesson_order: lesson.lesson_order,
+          }));
+
+          const { error: linkError } = await supabase
+            .from('course_lessons')
+            .insert(courseLessonsToInsert);
+
+          if (linkError) {
+            console.error('Error linking lessons to course:', linkError);
+          }
+        }
+      }
 
       toast({
         title: "Course Published",
@@ -130,7 +207,7 @@ export const CourseCreationPage: React.FC = () => {
       console.error('Error publishing course:', error);
       toast({
         title: "Error",
-        description: "Failed to publish course.",
+        description: "Failed to publish course. Please try again.",
         variant: "destructive",
       });
     }
