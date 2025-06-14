@@ -29,13 +29,32 @@ const videoSchema = z.object({
 
 type VideoFormData = z.infer<typeof videoSchema>;
 
+interface VideoWithProfile {
+  id: string;
+  title: string;
+  description?: string;
+  video_url: string;
+  thumbnail_url?: string;
+  duration_seconds?: number;
+  video_quality: string;
+  upload_status: string;
+  created_at: string;
+  profiles?: {
+    full_name: string;
+  };
+  video_processing_jobs?: Array<{
+    processing_status: string;
+    progress_percentage: number;
+  }>;
+}
+
 export const VideoLibraryPage: React.FC = () => {
   const { user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState('');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [editingVideo, setEditingVideo] = useState<any>(null);
+  const [editingVideo, setEditingVideo] = useState<VideoWithProfile | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>('all');
 
   const form = useForm<VideoFormData>({
@@ -69,7 +88,7 @@ export const VideoLibraryPage: React.FC = () => {
 
       const { data, error } = await query;
       if (error) throw error;
-      return data;
+      return data as VideoWithProfile[];
     },
     enabled: !!user,
   });
@@ -124,7 +143,7 @@ export const VideoLibraryPage: React.FC = () => {
     saveVideoMutation.mutate(values);
   };
 
-  const openEditDialog = (video: any) => {
+  const openEditDialog = (video: VideoWithProfile) => {
     setEditingVideo(video);
     form.reset({
       title: video.title,
@@ -403,7 +422,7 @@ export const VideoLibraryPage: React.FC = () => {
                           {video.upload_status}
                         </Badge>
                       </TableCell>
-                      <TableCell>{video.profiles?.full_name}</TableCell>
+                      <TableCell>{video.profiles?.full_name || 'Unknown'}</TableCell>
                       <TableCell>
                         {new Date(video.created_at).toLocaleDateString()}
                       </TableCell>
