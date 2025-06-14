@@ -12,11 +12,14 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { Video, Plus, Search, Upload, Play, Clock, Eye, FolderOpen } from 'lucide-react';
+import { Video, Plus, Search, Upload, Play, Clock, Eye, FolderOpen, MessageCircle, BarChart3 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { VideoAnnotations } from '@/components/video/VideoAnnotations';
+import { useLearningAnalytics } from '@/hooks/useLearningAnalytics';
 
 const videoSchema = z.object({
   title: z.string().min(2, 'Title must be at least 2 characters'),
@@ -52,10 +55,13 @@ export const VideoLibraryPage: React.FC = () => {
   const { user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { recordActivity } = useLearningAnalytics();
   const [searchTerm, setSearchTerm] = useState('');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingVideo, setEditingVideo] = useState<VideoWithProfile | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [selectedVideo, setSelectedVideo] = useState<VideoWithProfile | null>(null);
+  const [currentVideoTime, setCurrentVideoTime] = useState(0);
 
   const form = useForm<VideoFormData>({
     resolver: zodResolver(videoSchema),
@@ -156,6 +162,21 @@ export const VideoLibraryPage: React.FC = () => {
     setIsDialogOpen(true);
   };
 
+  const handleVideoPlay = (video: VideoWithProfile) => {
+    setSelectedVideo(video);
+    
+    // Record video watch activity
+    recordActivity.mutate({
+      classId: 'video-library', // Use a default class ID for video library
+      activityType: 'video_watch',
+      metadata: { video_id: video.id, video_title: video.title }
+    });
+  };
+
+  const handleVideoTimeUpdate = (time: number) => {
+    setCurrentVideoTime(time);
+  };
+
   const filteredVideos = videos?.filter(video =>
     video.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
     video.description?.toLowerCase().includes(searchTerm.toLowerCase())
@@ -175,9 +196,9 @@ export const VideoLibraryPage: React.FC = () => {
         {/* Header */}
         <div className="flex justify-between items-center">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Video Library</h1>
+            <h1 className="text-3xl font-bold text-gray-900">Enhanced Video Library</h1>
             <p className="text-gray-600">
-              {user?.role === 'student' ? 'Browse and watch video content' : 'Manage video content and organize playlists'}
+              {user?.role === 'student' ? 'Interactive video learning with annotations and progress tracking' : 'Manage video content with advanced features'}
             </p>
           </div>
           {canManageVideos && (
@@ -303,6 +324,105 @@ export const VideoLibraryPage: React.FC = () => {
           )}
         </div>
 
+        {/* Enhanced Video Player and Annotations */}
+        {selectedVideo && (
+          <Card className="mb-6">
+            <CardHeader>
+              <CardTitle className="flex items-center justify-between">
+                <span>{selectedVideo.title}</span>
+                <Button
+                  variant="outline"
+                  onClick={() => setSelectedVideo(null)}
+                >
+                  Close Player
+                </Button>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Tabs defaultValue="player" className="w-full">
+                <TabsList className="grid w-full grid-cols-3">
+                  <TabsTrigger value="player">Video Player</TabsTrigger>
+                  <TabsTrigger value="annotations">
+                    <MessageCircle className="h-4 w-4 mr-2" />
+                    Annotations
+                  </TabsTrigger>
+                  <TabsTrigger value="analytics">
+                    <BarChart3 className="h-4 w-4 mr-2" />
+                    Progress
+                  </TabsTrigger>
+                </TabsList>
+                
+                <TabsContent value="player" className="space-y-4">
+                  <div className="aspect-video bg-black rounded-lg flex items-center justify-center">
+                    <div className="text-white text-center">
+                      <Play className="h-16 w-16 mx-auto mb-4" />
+                      <p>Video Player Placeholder</p>
+                      <p className="text-sm text-gray-300">
+                        In a real implementation, this would be a video player component
+                      </p>
+                      <Button
+                        className="mt-4"
+                        onClick={() => window.open(selectedVideo.video_url, '_blank')}
+                      >
+                        Open Video
+                      </Button>
+                    </div>
+                  </div>
+                  {selectedVideo.description && (
+                    <div>
+                      <h3 className="font-semibold mb-2">Description</h3>
+                      <p className="text-gray-700">{selectedVideo.description}</p>
+                    </div>
+                  )}
+                </TabsContent>
+                
+                <TabsContent value="annotations">
+                  <VideoAnnotations
+                    videoContentId={selectedVideo.id}
+                    currentTimestamp={currentVideoTime}
+                    onSeekTo={(timestamp) => {
+                      setCurrentVideoTime(timestamp);
+                      // In a real video player, this would seek to the timestamp
+                    }}
+                  />
+                </TabsContent>
+                
+                <TabsContent value="analytics">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Video Progress Analytics</CardTitle>
+                      <CardDescription>
+                        Track your learning progress for this video
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-4">
+                        <div className="flex justify-between items-center">
+                          <span>Watch Time</span>
+                          <Badge variant="outline">
+                            {formatDuration(currentVideoTime)} / {formatDuration(selectedVideo.duration_seconds || 0)}
+                          </Badge>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span>Completion</span>
+                          <Badge variant="outline">
+                            {selectedVideo.duration_seconds ? 
+                              Math.round((currentVideoTime / selectedVideo.duration_seconds) * 100) : 0}%
+                          </Badge>
+                        </div>
+                        <div className="text-sm text-gray-600">
+                          <p>💡 Add annotations to remember key points</p>
+                          <p>📊 Your progress is automatically tracked</p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+              </Tabs>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Filters */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <Card>
@@ -360,10 +480,10 @@ export const VideoLibraryPage: React.FC = () => {
           <CardHeader>
             <CardTitle className="flex items-center">
               <Video className="mr-2 h-5 w-5" />
-              Video Content
+              Enhanced Video Content
             </CardTitle>
             <CardDescription>
-              {user?.role === 'student' ? 'Available video content' : 'Manage your video library'}
+              {user?.role === 'student' ? 'Interactive video content with annotations and progress tracking' : 'Manage your enhanced video library'}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -379,7 +499,7 @@ export const VideoLibraryPage: React.FC = () => {
                     <TableHead>Status</TableHead>
                     <TableHead>Uploaded By</TableHead>
                     <TableHead>Created</TableHead>
-                    {canManageVideos && <TableHead>Actions</TableHead>}
+                    <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -428,9 +548,16 @@ export const VideoLibraryPage: React.FC = () => {
                       <TableCell>
                         {new Date(video.created_at).toLocaleDateString()}
                       </TableCell>
-                      {canManageVideos && (
-                        <TableCell>
-                          <div className="flex space-x-2">
+                      <TableCell>
+                        <div className="flex space-x-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleVideoPlay(video)}
+                          >
+                            <Play className="h-4 w-4" />
+                          </Button>
+                          {canManageVideos && (
                             <Button
                               variant="ghost"
                               size="sm"
@@ -438,18 +565,9 @@ export const VideoLibraryPage: React.FC = () => {
                             >
                               Edit
                             </Button>
-                            {video.video_url && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => window.open(video.video_url, '_blank')}
-                              >
-                                <Play className="h-4 w-4" />
-                              </Button>
-                            )}
-                          </div>
-                        </TableCell>
-                      )}
+                          )}
+                        </div>
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
