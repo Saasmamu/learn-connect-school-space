@@ -51,22 +51,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           // Use setTimeout to defer the profile fetch and prevent recursion
           setTimeout(async () => {
             try {
-              const { data: profile, error } = await supabase
+              const { data: profile, error: profileError } = await supabase
                 .from('profiles')
                 .select('*')
                 .eq('id', session.user.id)
-                .single();
+                .maybeSingle();
 
-              if (profile && !error) {
+              const { data: roleData, error: roleError } = await supabase
+                .from('user_roles')
+                .select('role')
+                .eq('user_id', session.user.id)
+                .maybeSingle();
+
+              if (profile && roleData && !profileError && !roleError) {
                 setUser({
                   id: profile.id,
                   email: profile.email,
                   name: profile.full_name,
-                  role: profile.role,
+                  role: roleData.role as UserRole,
                   avatar: profile.avatar_url || undefined,
                 });
               } else {
-                console.error('Profile fetch error:', error);
+                console.error('Profile or role fetch error:', profileError, roleError);
                 setUser(null);
               }
             } catch (error) {
@@ -127,14 +133,38 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
       
       if (error) {
-        // Handle specific error cases
         if (error.message.includes('User already registered')) {
           throw new Error('This email is already registered. Please try logging in instead.');
         }
         throw error;
       }
 
-      // Check if user needs email confirmation
+      // Create profile and role for the new user
+      if (data.user) {
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .insert({
+            id: data.user.id,
+            email: email,
+            full_name: name,
+          });
+        
+        if (profileError) {
+          console.error('Profile creation error:', profileError);
+        }
+
+        const { error: roleError } = await supabase
+          .from('user_roles')
+          .insert({
+            user_id: data.user.id,
+            role: role,
+          });
+        
+        if (roleError) {
+          console.error('Role assignment error:', roleError);
+        }
+      }
+
       if (data.user && !data.session) {
         throw new Error('Please check your email to confirm your account before logging in.');
       }
